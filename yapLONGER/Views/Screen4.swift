@@ -4,7 +4,8 @@ struct Screen4: View {
     @State private var WPM = 120
     @State private var LGBW = 7
     @State private var CIS = 20
-    @State private var score: Double = 67
+    @State private var score: Int = 2
+    @State private var scoreTwo: Double = 67
     var body: some View {
         NavigationStack {
             VStack {
@@ -27,10 +28,24 @@ struct Screen4: View {
                         }
                     }
                     Section("Score"){
-                        SemiCircleGauge(progress: score / 100)
-                            .frame(height: 160)
-                            .padding(.horizontal)
-                            .padding(.top, 8)
+                        VStack {
+                            TabView {
+                                    SemiCircleGauge(progress: Double(score) / 3.0, label: "\(score)/3")
+                                        .frame(height: 160)
+                                        .padding(.horizontal)
+                                        .padding(.top, 8)
+                                    SemiCircleGauge(progress: max(0.0, min(1.0, scoreTwo / 100.0)), label: "\(Int(scoreTwo))%")
+                                        .frame(height: 160)
+                                        .padding(.horizontal)
+                                        .padding(.top, 8)
+                            }
+                            .tabViewStyle(.page)
+                            .indexViewStyle(.page(backgroundDisplayMode: .always))
+                            
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 200, alignment: .center)
+                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 24, trailing: 16))
+                        
                     }
                     NavigationLink {
                         Screen5()
@@ -52,6 +67,7 @@ struct Screen4: View {
         // progress expected 0.0 ... 1.0
         var progress: Double
         var lineWidth: CGFloat = 16
+        var label: String? = nil
         
         var body: some View {
             GeometryReader { geo in
@@ -66,10 +82,12 @@ struct Screen4: View {
                         .stroke(Color.blue, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                         .animation(.easeInOut(duration: 0.4), value: progress)
                     // Optional percentage label
-                    Text("\(Int(progress * 100))%")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .offset(y: size * 0.15)
+                    if let label {
+                        Text(label)
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundStyle(.primary)
+                            .offset(y: size * 0.15)
+                    }
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
             }
@@ -92,6 +110,7 @@ struct Screen4: View {
                         startAngle: startAngle,
                         endAngle: endAngle,
                         clockwise: false)
+            
             return path
         }
     }
@@ -100,4 +119,3 @@ struct Screen4: View {
 #Preview {
     Screen4()
 }
-
