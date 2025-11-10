@@ -2,7 +2,7 @@ import SwiftUI
 
 struct Screen4: View {
     @State private var WPM = 120
-    @State private var LGBW = 3
+    @State private var LGBW = 1 //supposed to be 2-4, doesnt work
     @State private var CIS = 85
     @State private var score: Int = 2
     @State var scoreTwo: Double = 67
