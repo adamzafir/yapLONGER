@@ -54,28 +54,12 @@ struct Screen3: View {
 
                 HStack {
                     Button {
-                        print("can i get the mic a little lefter?")
-                    } label: {
-                        Image(systemName: "arrow.left")
-                            .frame(height: 100)
-                            .padding(.horizontal)
-                    }
-                    Button {
                         isRecording.toggle()
                         showAccessory.toggle()
                     } label: {
                         RecordButtonView(isRecording: $isRecording)
                     }
                     .sensoryFeedback(.selection, trigger: showAccessory)
-                    
-                    
-                    Button {
-                        print("can i get the mic a little righter?")
-                    } label: {
-                        Image(systemName: "arrow.right")
-                            .frame(height: 100)
-                            .padding(.horizontal)
-                    }
                 }
                 Text(transcription)
             }
@@ -168,5 +152,8 @@ struct RecordButtonView: View {
 }
 
 #Preview {
-    RecordButtonView(isRecording: .constant(false))
+    Screen3(
+        title: .constant("The Impact of Social Media on Society"),
+        script: .constant("Social media has profoundly transformed the way people communicate and interact with one another. Over the past decade, platforms like Facebook, Twitter, and Instagram have enabled instant sharing of information, connecting people across the globe. On the positive side, social media allows for real-time communication, collaboration, and access to educational resources. Social movements have gained traction through social media campaigns, giving a voice to marginalized communities. However, there are also significant drawbacks. The constant exposure to curated content can lead to unrealistic expectations, mental health issues, and the spread of misinformation. Social media algorithms often prioritize engagement over accuracy, amplifying sensationalized content. In addition, the addictive nature of these platforms can disrupt daily routines and productivity. It is essential for individuals to practice mindful consumption, critically evaluate content, and maintain a healthy balance between online and offline interactions to mitigate the negative effects of social media while still leveraging its potential for connectivity and learning.")
+    )
 }
