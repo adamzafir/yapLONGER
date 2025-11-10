@@ -3,9 +3,9 @@ import SwiftUI
 struct Screen4: View {
     @State private var WPM = 120
     @State private var LGBW = 3
-    @State private var CIS = 100
+    @State private var CIS = 85
     @State private var score: Int = 2
-    @State private var scoreTwo: Double = 67
+    @State var scoreTwo: Double = 67
     
     
     private func wpmPercentage(_ wpm: Int) -> Double {
@@ -103,7 +103,7 @@ struct Screen4: View {
                         
                     }
                     NavigationLink {
-                        Screen5()
+                        Screen5(scoreTwo: $scoreTwo)
                     } label: {
                         Text("Playback")
                             .bold()

@@ -7,6 +7,8 @@ struct Screen5: View {
     @State private var duration: TimeInterval = 0
     @State private var progressTimer: Timer?
     @State private var isScrubbing = false
+    @Binding var scoreTwo: Double
+    
 
     // Gauge progress (0.0 ... 1.0)
     @State private var gaugeProgress: Double = 0.67
@@ -43,7 +45,7 @@ struct Screen5: View {
         NavigationStack {
             VStack(spacing: 24) {
                 // Gauge
-                SemiCircleGauge(progress: gaugeProgress)
+                SemiCircleGauge(progress: max(0.0, min(1.0, scoreTwo / 100.0)))
                     .frame(height: 160)
                     .padding(.horizontal)
                     .padding(.top, 8)
@@ -182,5 +184,5 @@ extension Screen5 {
 }
 
 #Preview {
-    Screen5()
+    Screen5(scoreTwo: .constant(67))
 }
