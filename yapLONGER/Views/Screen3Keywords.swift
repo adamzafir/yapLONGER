@@ -3,7 +3,6 @@ import AVFoundation
 import Speech
 import FoundationModels
 
-
 @Generable
 struct keyword {
     @Guide(description: "Key Words/Phrases from the script")
@@ -28,120 +27,138 @@ struct Screen3Keywords: View {
     
     var body: some View {
         NavigationStack {
-            VStack {
-                if isLoading {
-                    Spacer()
-                    ProgressView("Loading...")
-                        .progressViewStyle(CircularProgressViewStyle())
-                        .padding()
+            
                 
-                    Spacer()
-                    Spacer()
-                    
-                    Text("Powered By")
-                        .fontWeight(.medium)
-                        .font(.title3)
-                    Text("Avyan Intelligence")
-                        .font(.system(size: 35, weight: .semibold))
-                        .appleIntelligenceGradient()
-                    
-                    
-                   
-                 
-
-                } else {
-                    ScrollView {
-                        VStack {
-                        
-                            Text("Keywords:")
-                                .font(.title2.bold())
-                                .frame(maxWidth: .infinity, alignment: .center)
-                            ForEach(response3, id: \.self) { word in
-                                Text(word)
-                                    .font(.title2.bold())
-                                    .padding(5)
-                                    .frame(maxWidth: .infinity, alignment: .center)
+                VStack(spacing: 20) {
+                    if isLoading {
+                        Spacer()
+                        ZStack {
+                            
+                            VStack(spacing: 4) {
+                                ProgressView("Loading...")
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .padding()
+                                
+                                
+                                
+                                
+                                Text("Powered By")
+                                    .fontWeight(.medium)
+                                    .font(.title3)
+                                
+                                Text("Avyan Intelligence")
+                                    .font(.system(size: 35, weight: .semibold))
+                                    .appleIntelligenceGradient()
+                            }
+                            VStack {
+                                Spacer()
+                                GlowEffect()
+                                    .offset(y: 25)
                             }
                         }
-                    }
-                    .padding()
-                }
-
-                Spacer()
-
-                HStack {
-                    Button {
-                        isRecording.toggle()
-                        showAccessory.toggle()
-                    } label: {
-                        RecordButtonView(isRecording: $isRecording)
-                    }
-                    .sensoryFeedback(.selection, trigger: showAccessory)
-                }
-                Text(transcription)
-            }
-            .onAppear {
-                Task {
-                    let prompt = "Reply with only the keywords/phrases, each on a new line from: \(script)"
-                    let response = try await session.respond(to: prompt, generating: keyword.self)
-                    response2 = response.content
-                    print("\(response2)")
-                    
-                    response3 = response2.keywords
-                    isLoading = false
-                }
-            }
-            .navigationTitle($title)
-            .padding()
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Label("Back", systemImage: "chevron.backward")
-                    }
-                }
-            }
-            .onChange(of: isRecording) { recording in
-                if recording {
-                    SFSpeechRecognizer.requestAuthorization { status in
-                        guard status == .authorized else { return }
-                    }
-                    
-                    Task {
-                        let micGranted = await AVAudioApplication.requestRecordPermission()
-                        guard micGranted else { return }
-                    }
-                    
-                    guard let recogniser = speechRecogniser, recogniser.isAvailable else { return }
-                    
-                    let audioSession = AVAudioSession.sharedInstance()
-                    try? audioSession.setCategory(.record, mode: .measurement)
-                    try? audioSession.setActive(true)
-                    
-                    let request = SFSpeechAudioBufferRecognitionRequest()
-                    request.shouldReportPartialResults = true
-                    
-                    let inputNode = audioEngine.inputNode
-                    let format = inputNode.outputFormat(forBus: 0)
-                    
-                    inputNode.removeTap(onBus: 0)
-                    inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-                        request.append(buffer)
-                    }
-                    audioEngine.prepare()
-                    try? audioEngine.start()
-                    
-                    recogniser.recognitionTask(with: request) { result, _ in
-                        if let result {
-                            transcription = result.bestTranscription.formattedString
+                        
+                            
+                        Spacer()
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 12) {
+                                Text("Keywords:")
+                                    .font(.title2.bold())
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                
+                                ForEach(response3, id: \.self) { word in
+                                    Text(word)
+                                        .font(.title2.bold())
+                                        .padding(5)
+                                        .frame(maxWidth: .infinity, alignment: .center)
+                                }
+                            }
+                            .padding()
                         }
                     }
-                } else {
-                    audioEngine.stop()
-                    audioEngine.inputNode.removeTap(onBus: 0)
+                    
+                    Spacer()
+                    
+                    VStack(spacing: 12) {
+                        HStack {
+                            Button {
+                                isRecording.toggle()
+                                showAccessory.toggle()
+                            } label: {
+                                RecordButtonView(isRecording: $isRecording)
+                            }
+                            .sensoryFeedback(.selection, trigger: showAccessory)
+                            
+                            Text(transcription)
+                                .font(.body)
+                                .lineLimit(3)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                .padding()
+                .navigationTitle($title)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: { dismiss() }) {
+                            Label("Back", systemImage: "chevron.backward")
+                        }
+                    }
+                }
+                .onAppear {
+                    Task {
+                        let prompt = "Reply with only the keywords/phrases, each on a new line from: \(script)"
+                        let response = try await session.respond(to: prompt, generating: keyword.self)
+                        response2 = response.content
+                        print("\(response2)")
+                        
+                        response3 = response2.keywords
+                        isLoading = false
+                    }
+                }
+                .onChange(of: isRecording) { recording in
+                    if recording {
+                        SFSpeechRecognizer.requestAuthorization { status in
+                            guard status == .authorized else { return }
+                        }
+                        
+                        Task {
+                            let micGranted = await AVAudioApplication.requestRecordPermission()
+                            guard micGranted else { return }
+                        }
+                        
+                        guard let recogniser = speechRecogniser, recogniser.isAvailable else { return }
+                        
+                        let audioSession = AVAudioSession.sharedInstance()
+                        try? audioSession.setCategory(.record, mode: .measurement)
+                        try? audioSession.setActive(true)
+                        
+                        let request = SFSpeechAudioBufferRecognitionRequest()
+                        request.shouldReportPartialResults = true
+                        
+                        let inputNode = audioEngine.inputNode
+                        let format = inputNode.outputFormat(forBus: 0)
+                        
+                        inputNode.removeTap(onBus: 0)
+                        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                            request.append(buffer)
+                        }
+                        audioEngine.prepare()
+                        try? audioEngine.start()
+                        
+                        recogniser.recognitionTask(with: request) { result, _ in
+                            if let result {
+                                transcription = result.bestTranscription.formattedString
+                            }
+                        }
+                    } else {
+                        audioEngine.stop()
+                        audioEngine.inputNode.removeTap(onBus: 0)
+                    }
                 }
             }
         }
-    }
 }
 
 struct RecordButtonView: View {
