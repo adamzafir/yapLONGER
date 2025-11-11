@@ -132,6 +132,9 @@ struct Settings: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
+                Section(header: Text("Acknoledgments")) {
+                    Text("idk")
+                }
             }
             .onAppear {
                

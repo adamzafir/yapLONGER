@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct Screen1: View {
-    @StateObject private var viewModel = Screen2ViewModel()
+    @ObservedObject var viewModel: Screen2ViewModel
 
     var body: some View {
         NavigationStack {
@@ -13,7 +13,7 @@ struct Screen1: View {
                         Text(item.title)
                     }
                 }
-                .onDelete(perform: deleteItems) // ← swipe-to-delete
+                .onDelete(perform: deleteItems) 
             }
             .navigationTitle("Scripts")
            
@@ -28,6 +28,5 @@ struct Screen1: View {
 
 
 #Preview {
-    Screen1()
+    Screen1(viewModel: Screen2ViewModel())
 }
-
