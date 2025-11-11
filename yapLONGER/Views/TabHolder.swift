@@ -1,6 +1,5 @@
 import SwiftUI
 
-
 enum Tabs {
     case scripts
     case settings

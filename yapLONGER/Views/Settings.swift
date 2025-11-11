@@ -133,7 +133,9 @@ struct Settings: View {
                     }
                 }
                 Section(header: Text("Acknoledgments")) {
-                    Text("idk")
+                    Text("Avyan Inteligence")
+                        .fontWeight(.semibold)
+                        .appleIntelligenceGradient()
                 }
             }
             .onAppear {

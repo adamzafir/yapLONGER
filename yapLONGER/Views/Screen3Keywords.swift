@@ -3,6 +3,7 @@ import AVFoundation
 import Speech
 import FoundationModels
 
+
 @Generable
 struct keyword {
     @Guide(description: "Key Words/Phrases from the script")
@@ -29,9 +30,25 @@ struct Screen3Keywords: View {
         NavigationStack {
             VStack {
                 if isLoading {
+                    Spacer()
                     ProgressView("Loading...")
                         .progressViewStyle(CircularProgressViewStyle())
                         .padding()
+                
+                    Spacer()
+                    Spacer()
+                    
+                    Text("Powered By")
+                        .fontWeight(.medium)
+                        .font(.title3)
+                    Text("Avyan Intelligence")
+                        .font(.system(size: 35, weight: .semibold))
+                        .appleIntelligenceGradient()
+                    
+                    
+                   
+                 
+
                 } else {
                     ScrollView {
                         VStack {

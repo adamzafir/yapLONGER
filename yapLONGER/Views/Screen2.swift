@@ -6,6 +6,7 @@ struct Screen2: View {
     @Binding var script: String
     
     @State private var showScreen = false
+    @State private var showScreent = false
     @FocusState private var isEditingScript: Bool
     
     @State private var rewriting = false
@@ -76,13 +77,19 @@ struct Screen2: View {
                 }
             }
         .toolbar {
-            ToolbarItem() {
-                Button {
-                    showScreen = true
-                } label: {
-                    Image(systemName: "music.microphone")
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showScreen = true
+                    } label: {
+                        Image(systemName: "music.microphone")
+                    } //change the sf symbols later
+                    Button {
+                        showScreent = true
+                    } label: {
+                        Image(systemName: "music.microphone")
+                    }
                 }
-            }
+            
             
             ToolbarItemGroup(placement: .keyboard) {
                 Button {
@@ -109,8 +116,11 @@ struct Screen2: View {
                 .padding()
                 .background(.ultraThinMaterial)
         }
-        .fullScreenCover(isPresented: $showScreen) {
+        .fullScreenCover(isPresented: $showScreent) {
             Screen3Teleprompter(title: $title, script: $script)
+        }
+        .fullScreenCover(isPresented: $showScreen) {
+            Screen3Keywords(title: $title, script: $script)
         }
     }
 }
