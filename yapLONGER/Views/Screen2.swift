@@ -19,7 +19,7 @@ struct Screen2: View {
     
     var body: some View {
         NavigationStack {
-        TabView {
+            TabView {
                 VStack {
                     TextField("Untitled Script", text: $title)
                         .font(.title)
@@ -76,59 +76,63 @@ struct Screen2: View {
                     }
                 }
             }
-        .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        showScreen = true
-                    } label: {
-                        Image(systemName: "music.microphone")
-                    } //change the sf symbols later
-                    Button {
-                        showScreent = true
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            showScreent = true
+                        } label: {
+                            Text("Teleprompter")
+                        }
+                        Button {
+                            showScreen = true
+                        } label: {
+                            Text("Keywords")
+                        }
                     } label: {
                         Image(systemName: "music.microphone")
                     }
                 }
-            
-            
-            ToolbarItemGroup(placement: .keyboard) {
-                Button {
-                    showPromptDialog = true
-                } label: {
-                    Image(systemName: "wand.and.stars")
-                }
                 
-                Spacer()
-                
-                Button {
-                    isEditingScript = false
-                } label: {
-                    Image(systemName: "checkmark")
+                ToolbarItemGroup(placement: .keyboard) {
+                    Button {
+                        showPromptDialog = true
+                    } label: {
+                        Image(systemName: "wand.and.stars")
+                    }
+                    
+                    Spacer()
+                    
+                    Button {
+                        isEditingScript = false
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
                 }
             }
-        }
 
-        }
-        .tabViewBottomAccessory {
-            Text("Word Count: \(script.split { $0.isWhitespace }.count)")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(.ultraThinMaterial)
-        }
-        .fullScreenCover(isPresented: $showScreent) {
-            Screen3Teleprompter(title: $title, script: $script)
-        }
-        .fullScreenCover(isPresented: $showScreen) {
-            Screen3Keywords(title: $title, script: $script)
+                
+            }
+            .tabViewBottomAccessory {
+                Text("Word Count: \(script.split { $0.isWhitespace }.count)")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.ultraThinMaterial)
+            }
+            .fullScreenCover(isPresented: $showScreent) {
+                Screen3Teleprompter(title: $title, script: $script)
+            }
+            .fullScreenCover(isPresented: $showScreen) {
+                Screen3Keywords(title: $title, script: $script)
+            }
         }
     }
-}
-
-
-#Preview {
-    Screen2(
-        title: .constant("untitled"),
-        script: .constant("This is a test script.")
-    )
-}
+    
+    
+    #Preview {
+        Screen2(
+            title: .constant("untitled"),
+            script: .constant("This is a test script.")
+        )
+    }
