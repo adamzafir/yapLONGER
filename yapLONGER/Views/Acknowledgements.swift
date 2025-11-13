@@ -35,6 +35,10 @@ struct Acknowledgements: View {
         NavigationStack {
             VStack {
                 List {
+                    Section(header: Text("Tools")) {
+                        ListItem(sfSymbol: "hammer.fill", title: "Xcode", subtitle: "Development IDE")
+                        ListItem(sfSymbol: "paintbrush.fill", title: "Figma", subtitle: "UI design")
+                    }
                     Section(header: Text("Packages & Frameworks")) {
                         ListItem(sfSymbol: "medal.star.fill", title: "Foundation Models", subtitle: "Local device models developed by Apple.")
                         ListItem(sfSymbol: "sparkles", title: "Avyan Intelligence", subtitle: "Inspired by Avyan.")
