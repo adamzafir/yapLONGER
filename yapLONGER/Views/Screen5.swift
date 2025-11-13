@@ -9,9 +9,17 @@ struct Screen5: View {
     @State private var isScrubbing = false
     @Binding var scoreTwo: Double
     
-
     // Gauge progress (0.0 ... 1.0)
     @State private var gaugeProgress: Double = 0.67
+
+    private func configureAudioSessionForPlayback() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Audio session setup failed:", error)
+        }
+    }
 
     private func startProgressTimer() {
         progressTimer?.invalidate()
@@ -26,6 +34,8 @@ struct Screen5: View {
     }
 
     func playSound(sound: String, type: String) {
+        configureAudioSessionForPlayback()
+
         guard let url = Bundle.main.url(forResource: sound, withExtension: type) else {
             print("Audio file not found:", sound, ".", type)
             return
@@ -89,12 +99,7 @@ struct Screen5: View {
 
                     // Play/Pause
                     Button {
-                        do {
-                            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-                            try AVAudioSession.sharedInstance().setActive(true)
-                        } catch {
-                            print("Audio session setup failed:", error)
-                        }
+                        configureAudioSessionForPlayback()
 
                         guard let player = audioPlayer else {
                             currentTime = 0
@@ -129,6 +134,9 @@ struct Screen5: View {
             }
             .padding()
             .navigationTitle("Review")
+            .onAppear {
+                configureAudioSessionForPlayback()
+            }
             .onDisappear {
                 progressTimer?.invalidate()
                 progressTimer = nil

@@ -5,7 +5,7 @@ struct Settings: View {
         case light
         case dark
         case system
-
+        
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -15,9 +15,9 @@ struct Settings: View {
             }
         }
     }
-   
+    
     @AppStorage("appColorScheme") private var storedFlavorRawValue: String = ColourScheme.system.rawValue
-
+    
     private var storedColourScheme: ColourScheme {
         get { ColourScheme(rawValue: storedFlavorRawValue) ?? .system }
         set { storedFlavorRawValue = newValue.rawValue }
@@ -29,10 +29,10 @@ struct Settings: View {
             set: { storedFlavorRawValue = $0.rawValue }
         )
     }
-
+    
     @AppStorage("fontSize") private var fontSize: Double = 28
-
- 
+    
+    
     private enum FontSizeChoice: Hashable, CaseIterable, Identifiable {
         case extraSmall
         case small
@@ -40,9 +40,9 @@ struct Settings: View {
         case large
         case massive
         case custom
-
+        
         var id: Self { self }
-
+        
         var title: String {
             switch self {
             case .extraSmall: return "XS"
@@ -53,7 +53,7 @@ struct Settings: View {
             case .custom: return "Custom"
             }
         }
-
+        
         var presetValue: Double? {
             switch self {
             case .extraSmall: return 10
@@ -64,7 +64,7 @@ struct Settings: View {
             case .custom: return nil
             }
         }
-
+        
         static func fromStored(_ value: Double) -> FontSizeChoice {
             switch value {
             case 10: return .extraSmall
@@ -76,10 +76,10 @@ struct Settings: View {
             }
         }
     }
-
+    
     @State private var fontChoice: FontSizeChoice = .default
     @State private var customSize: Double = 28
-
+    
     var body: some View {
         NavigationStack {
             List {
@@ -90,7 +90,7 @@ struct Settings: View {
                         }
                     }
                 }
-
+                
                 Section(header: Text("Teleprompter Font size")) {
                     Picker("Font size", selection: Binding(
                         get: { fontChoice },
@@ -101,7 +101,7 @@ struct Settings: View {
                                 fontSize = preset
                                 customSize = preset
                             } else {
-                               
+                                
                                 customSize = min(max(fontSize, 10), 60)
                             }
                         }
@@ -111,7 +111,7 @@ struct Settings: View {
                         }
                     }
                     .pickerStyle(.segmented)
-
+                    
                     if fontChoice == .custom {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -132,14 +132,14 @@ struct Settings: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
-                Section(header: Text("Acknowledgements")) {
-                    Text("Avyan Inteligence")
-                        .fontWeight(.semibold)
-                        .appleIntelligenceGradient()
+                NavigationLink {
+                    Acknowledgements()
+                } label: {
+                    Text("Acknowledgements")
                 }
             }
             .onAppear {
-               
+                
                 let initialChoice = FontSizeChoice.fromStored(fontSize)
                 fontChoice = initialChoice
                 customSize = initialChoice.presetValue ?? min(max(fontSize, 10), 60)
