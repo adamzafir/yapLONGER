@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleIdentifier</key>
-	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>idk</string>
+	<string>We need your microphone to use the teleprompter voice input.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>We need speech recognition to scroll the teleprompter automatically.</string>
 </dict>
 </plist>

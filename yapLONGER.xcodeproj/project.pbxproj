@@ -7,25 +7,13 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		66157EED2EC61AE5001EF93E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		66C863CE2EC1AA94007A5F08 /* yapLONGER.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = yapLONGER.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		66157EE82EC6144A001EF93E /* Exceptions for "yapLONGER" folder in "yapLONGER" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 66C863CD2EC1AA94007A5F08 /* yapLONGER */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		66C863D02EC1AA94007A5F08 /* yapLONGER */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				66157EE82EC6144A001EF93E /* Exceptions for "yapLONGER" folder in "yapLONGER" target */,
-			);
 			path = yapLONGER;
 			sourceTree = "<group>";
 		};
@@ -45,6 +33,7 @@
 		66C863C52EC1AA94007A5F08 = {
 			isa = PBXGroup;
 			children = (
+				66157EED2EC61AE5001EF93E /* Info.plist */,
 				66C863D02EC1AA94007A5F08 /* yapLONGER */,
 				66C863CF2EC1AA94007A5F08 /* Products */,
 			);
@@ -271,8 +260,8 @@
 				DEVELOPMENT_TEAM = VFWTN3DUTZ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = yapLONGER/Info.plist;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = usage;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = idk;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -306,8 +295,8 @@
 				DEVELOPMENT_TEAM = VFWTN3DUTZ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = yapLONGER/Info.plist;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = usage;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = idk;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
