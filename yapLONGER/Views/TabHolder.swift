@@ -1,6 +1,5 @@
 import SwiftUI
 
-
 enum Tabs {
     case scripts
     case settings
@@ -9,11 +8,13 @@ enum Tabs {
 
 struct TabHolder: View {
     @State private var selectedTab: Tabs = .scripts
+    @State var showScreen: Bool = false
+    @StateObject private var viewModel = Screen2ViewModel()
     
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Scripts", systemImage: "swirl.circle.righthalf.filled", value: Tabs.scripts) {
-                Screen1()
+                Screen1(viewModel: viewModel)
             }
             
             Tab("Settings", systemImage: "gear", value: Tabs.settings) {
@@ -21,11 +22,22 @@ struct TabHolder: View {
             }
             
             Tab("Add", systemImage: "plus", value: Tabs.add, role: .search) {
-                Text("Hi")
+                Color.clear
+                    .onAppear {
+                        var newItem = ScriptItem(
+                            id: UUID(),
+                            title: "Untitled Script",
+                            scriptText: "Type something..."
+                        )
+                        viewModel.scriptItems.append(newItem)
+                        selectedTab = .scripts
+                    }
             }
-        }}}
-            
-            
+        }
+    }
+}
+
+
 #Preview {
     TabHolder()
 }
