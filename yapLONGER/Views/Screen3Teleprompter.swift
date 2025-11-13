@@ -28,6 +28,26 @@ func splitIntoLinesByWidth(_ text: String, font: UIFont, maxWidth: CGFloat) -> [
     return lines
 }
 
+private func normalizeAndTokenize(_ text: String) -> [String] {
+    let lowered = text.lowercased()
+    let stripped = lowered.unicodeScalars.map { CharacterSet.punctuationCharacters.contains($0) ? " " : String($0) }.joined()
+    return stripped
+        .components(separatedBy: .whitespacesAndNewlines)
+        .filter { !$0.isEmpty }
+}
+
+private func isSubsequence(_ small: [String], in big: [String]) -> Bool {
+    guard !small.isEmpty else { return true }
+    var i = 0
+    for token in big {
+        if token == small[i] {
+            i += 1
+            if i == small.count { return true }
+        }
+    }
+    return false
+}
+
 struct Screen3Teleprompter: View {
     @State private var showAccessory = false
     let synthesiser = AVSpeechSynthesizer()
@@ -41,11 +61,36 @@ struct Screen3Teleprompter: View {
     @State var scriptLines: [String] = []
     @State private var isLoading = true
     @AppStorage("fontSize") var fontSize: Double = 28
+    @State private var tokensPerLine: [[String]] = []
+    @State private var currentLineIndex: Int = 0
+    @State private var lastAdvanceTime: Date = .distantPast
 
     private func recomputeLines() {
         let font = UIFont.systemFont(ofSize: CGFloat(fontSize))
         let maxWidth = UIScreen.main.bounds.width - 32
         scriptLines = splitIntoLinesByWidth(script, font: font, maxWidth: maxWidth)
+        tokensPerLine = scriptLines.map { normalizeAndTokenize($0) }
+        currentLineIndex = min(currentLineIndex, max(0, scriptLines.count - 1))
+    }
+
+    private func tryAdvance(using recognizedTokens: [String], scrollProxy: ScrollViewProxy) {
+        guard currentLineIndex < tokensPerLine.count else { return }
+        let now = Date()
+        if now.timeIntervalSince(lastAdvanceTime) < 0.3 { return }
+
+        let expected = tokensPerLine[currentLineIndex]
+        if expected.isEmpty || isSubsequence(expected, in: recognizedTokens) {
+            // Advance exactly one line
+            let nextIndex = currentLineIndex + 1
+            if nextIndex <= scriptLines.count {
+                currentLineIndex = min(nextIndex, scriptLines.count - 1)
+                lastAdvanceTime = now
+
+                withAnimation(.easeInOut) {
+                    scrollProxy.scrollTo(currentLineIndex, anchor: .top)
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -56,15 +101,33 @@ struct Screen3Teleprompter: View {
                         .progressViewStyle(CircularProgressViewStyle())
                         .padding()
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(scriptLines, id: \.self) { line in
-                                Text(line)
-                                    .font(.system(size: CGFloat(fontSize)))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(Array(scriptLines.enumerated()), id: \.offset) { index, line in
+                                    Text(line)
+                                        .font(.system(size: CGFloat(fontSize)))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .id(index)
+                                        .background(index == currentLineIndex ? Color.primary.opacity(0.08) : Color.clear)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .onChange(of: currentLineIndex) { _, newValue in
+                            withAnimation(.easeInOut) {
+                                proxy.scrollTo(newValue, anchor: .top)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .onAppear {
+                            if !scriptLines.isEmpty {
+                                proxy.scrollTo(0, anchor: .top)
+                            }
+                        }
+                        .onChange(of: transcription) { _, newValue in
+                            let tokens = normalizeAndTokenize(newValue)
+                            tryAdvance(using: tokens, scrollProxy: proxy)
+                        }
                     }
                 }
 
@@ -81,6 +144,8 @@ struct Screen3Teleprompter: View {
                 }
 
                 Text(transcription.isEmpty ? "..." : transcription)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
             }
             .onAppear {
                 Task {
@@ -88,10 +153,10 @@ struct Screen3Teleprompter: View {
                     isLoading = false
                 }
             }
-            .onChange(of: fontSize) { _ in
+            .onChange(of: fontSize) { _, _ in
                 recomputeLines()
             }
-            .onChange(of: script) { _ in
+            .onChange(of: script) { _, _ in
                 recomputeLines()
             }
             .navigationTitle(title)
@@ -103,7 +168,7 @@ struct Screen3Teleprompter: View {
                     }
                 }
             }
-            .onChange(of: isRecording) { recording in
+            .onChange(of: isRecording) { _, recording in
                 if recording {
                     SFSpeechRecognizer.requestAuthorization { status in
                         guard status == .authorized else { return }
