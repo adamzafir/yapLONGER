@@ -6,7 +6,7 @@ func splitIntoLinesByWidth(_ text: String, font: UIFont, maxWidth: CGFloat) -> [
     let words = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
     var lines: [String] = []
     var currentLine = ""
-
+    
     for word in words {
         let testLine = currentLine.isEmpty ? word : "\(currentLine) \(word)"
         let size = (testLine as NSString).size(withAttributes: [.font: font])
@@ -50,7 +50,6 @@ private func isSubsequence(_ small: [String], in big: [String]) -> Bool {
 
 struct Screen3Teleprompter: View {
     @EnvironmentObject private var recordingStore: RecordingStore
-    
     @State private var showAccessory = false
     let synthesiser = AVSpeechSynthesizer()
     let audioEngine = AVAudioEngine()
@@ -65,8 +64,10 @@ struct Screen3Teleprompter: View {
     @AppStorage("fontSize") var fontSize: Double = 28
     @State private var tokensPerLine: [[String]] = []
     @State private var currentLineIndex: Int = 0
-    @State private var lastAdvanceTime: Date = .distantPast
+    @State private var lastAdvanceTime: Date =
+        .distantPast
     @State private var navigateToScreen4 = false
+<<<<<<< Updated upstream
     @State private var currentDate = Date.now
     @State private var elapsedTime: Int = 0
     @State private var timer: Timer? = nil
@@ -79,6 +80,13 @@ struct Screen3Teleprompter: View {
         return String(format: "%02d:%02d", minutes, seconds)
         
     }
+=======
+    @State var secondsPerWord: [Int] = []
+    @State var scriptWords: [String] = []
+    @State var timer: TimerManager
+    @State var transscriptionChangeCount: Int = 0
+    
+>>>>>>> Stashed changes
     private func recomputeLines() {
         let font = UIFont.systemFont(ofSize: CGFloat(fontSize))
         let maxWidth = UIScreen.main.bounds.width - 32
@@ -86,26 +94,26 @@ struct Screen3Teleprompter: View {
         tokensPerLine = scriptLines.map { normalizeAndTokenize($0) }
         currentLineIndex = min(currentLineIndex, max(0, scriptLines.count - 1))
     }
-
+    
     private func tryAdvance(using recognizedTokens: [String], scrollProxy: ScrollViewProxy) {
         guard currentLineIndex < tokensPerLine.count else { return }
         let now = Date()
         if now.timeIntervalSince(lastAdvanceTime) < 0.3 { return }
-
+        
         let expected = tokensPerLine[currentLineIndex]
         if expected.isEmpty || isSubsequence(expected, in: recognizedTokens) {
             let nextIndex = currentLineIndex + 1
             if nextIndex <= scriptLines.count {
                 currentLineIndex = min(nextIndex, scriptLines.count - 1)
                 lastAdvanceTime = now
-
+                
                 withAnimation(.easeInOut) {
                     scrollProxy.scrollTo(currentLineIndex, anchor: .top)
                 }
             }
         }
     }
-
+    
     var body: some View {
         NavigationStack {
             // Hidden link to Screen4 that activates on stop
@@ -142,28 +150,45 @@ struct Screen3Teleprompter: View {
                         .onChange(of: transcription) { _, newValue in
                             let tokens = normalizeAndTokenize(newValue)
                             tryAdvance(using: tokens, scrollProxy: proxy)
+                            if transcription = scriptWords[0] {
+                                transscriptionChangeCount += 1
+                                scriptWords.remove(at: 0)
+                                if transscriptionChangeCount % 5 = 0 {
+                                    timer.stop()
+                                    secondsPerWord.append( timer.elapsedSeconds)
+                                }
+                                
+                            }
                         }
                     }
                 }
-
+                
                 Spacer()
-
+                
                 HStack {
                     Button {
                         isRecording.toggle()
                         showAccessory.toggle()
+                        if isRecording {
+                            timer.stop()
+                            timer.reset()
+                        } else {
+                            timer.start()
+                            //let deviation = wpm.standardDeviation(from: secondsPerWord)
+                        }
                     } label: {
                         RecordButtonView(isRecording: $isRecording)
                     }
                     .sensoryFeedback(.selection, trigger: showAccessory)
                 }
-
+                
                 Text(transcription.isEmpty ? "..." : transcription)
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
             }
             .onAppear {
                 Task {
+                    scriptWords = script.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
                     recomputeLines()
                     isLoading = false
                 }
@@ -192,31 +217,31 @@ struct Screen3Teleprompter: View {
                     SFSpeechRecognizer.requestAuthorization { status in
                         guard status == .authorized else { return }
                     }
-
+                    
                     Task {
                         let micGranted = await AVAudioApplication.requestRecordPermission()
                         guard micGranted else { return }
                     }
-
+                    
                     guard let recogniser = speechRecogniser, recogniser.isAvailable else { return }
-
+                    
                     let audioSession = AVAudioSession.sharedInstance()
                     try? audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
                     try? audioSession.setActive(true)
-
+                    
                     let request = SFSpeechAudioBufferRecognitionRequest()
                     request.shouldReportPartialResults = true
-
+                    
                     let inputNode = audioEngine.inputNode
                     let format = inputNode.outputFormat(forBus: 0)
-
+                    
                     inputNode.removeTap(onBus: 0)
                     inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                         request.append(buffer)
                     }
                     audioEngine.prepare()
                     try? audioEngine.start()
-
+                    
                     recogniser.recognitionTask(with: request) { result, _ in
                         if let result {
                             transcription = result.bestTranscription.formattedString
@@ -235,10 +260,10 @@ struct Screen3Teleprompter: View {
     }
 }
 
-#Preview {
-    Screen3Teleprompter(
-        title: .constant("The Impact of Social Media on Society"),
-        script: .constant("Social media has profoundly transformed the way people communicate and interact with one another. Over the past decade, platforms like Facebook, Twitter, and Instagram have enabled instant sharing of information, connecting people across the globe. On the positive side, social media allows for real-time communication, collaboration, and access to educational resources. Social movements have gained traction through social media campaigns, giving a voice to marginalized communities. However, there are also significant drawbacks. The constant exposure to curated content can lead to unrealistic expectations, mental health issues, and the spread of misinformation. Social media algorithms often prioritize engagement over accuracy, amplifying sensationalized content. In addition, the addictive nature of these platforms can disrupt daily routines and productivity. It is essential for individuals to practice mindful consumption, critically evaluate content, and maintain a healthy balance between online and offline interactions to mitigate the negative effects of social media while still leveraging its potential for connectivity and learning.")
-    )
-    .environmentObject(RecordingStore())
-}
+//#Preview {
+//    Screen3Teleprompter(
+//        title: .constant("The Impact of Social Media on Society"),
+//        script: .constant("Social media has profoundly transformed the way people communicate and interact with one another. Over the past decade, platforms like Facebook, Twitter, and Instagram have enabled instant sharing of information, connecting people across the globe. On the positive side, social media allows for real-time communication, collaboration, and access to educational resources. Social movements have gained traction through social media campaigns, giving a voice to marginalized communities. However, there are also significant drawbacks. The constant exposure to curated content can lead to unrealistic expectations, mental health issues, and the spread of misinformation. Social media algorithms often prioritize engagement over accuracy, amplifying sensationalized content. In addition, the addictive nature of these platforms can disrupt daily routines and productivity. It is essential for individuals to practice mindful consumption, critically evaluate content, and maintain a healthy balance between online and offline interactions to mitigate the negative effects of social media while still leveraging its potential for connectivity and learning."), timer: .constant(TimerManager)
+//    )
+//    .environmentObject(RecordingStore())
+//}

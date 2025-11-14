@@ -1,4 +1,4 @@
- import SwiftUI
+import SwiftUI
 import Foundation
 
 struct startGame: View {
@@ -18,11 +18,10 @@ struct startGame: View {
     
     var body: some View {
         
-    
             
             VStack {
                 
-                
+
                 VStack{
                     Spacer()
                     Text("Time: \(formattedTime)")
