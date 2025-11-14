@@ -1,3 +1,5 @@
+import SwiftUI
+
 struct RecordButtonView: View {
     @Binding var isRecording: Bool
     @State private var buttonCircle: CGFloat = 60

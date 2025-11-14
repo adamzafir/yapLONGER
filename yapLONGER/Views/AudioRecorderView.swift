@@ -8,18 +8,7 @@
 import SwiftUI
 import AVKit
 
-struct ContentView: View {
-    var body: some View {
-        Home()
-            .preferredColorScheme(.light)
-    }
-}
-
-#Preview {
-    ContentView()
-}
-
-struct Home: View {
+struct AudioRecorderView: View {
     @State private var record = false
     @State private var session: AVAudioSession?
     @State private var recorder: AVAudioRecorder?
@@ -143,4 +132,8 @@ struct Home: View {
             print("List audios error: \(error.localizedDescription)")
         }
     }
+}
+
+#Preview {
+    AudioRecorderView()
 }
