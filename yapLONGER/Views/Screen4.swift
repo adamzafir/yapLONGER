@@ -2,10 +2,10 @@ import SwiftUI
 
 struct Screen4: View {
     @State private var WPM = 120
-    @State private var LGBW = 3
+    @Binding var LGBW: Int
     @State private var CIS = 70
     @State private var score: Int = 2
-    @State var scoreTwo: Double = 67
+    @State private var scoreTwo: Double = 67
     @Binding var elapsedTime: Int
     @Binding var wordCount: Int
     private func wpmPercentage(_ wpm: Int) -> Double {
@@ -196,5 +196,5 @@ struct Screen4: View {
 }
 
 #Preview {
-    Screen4(elapsedTime: .constant(0), wordCount: .constant(0))
+    Screen4(LGBW: .constant(0), elapsedTime: .constant(0), wordCount: .constant(0))
 }
