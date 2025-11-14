@@ -9,9 +9,10 @@ struct Settings: View {
         var id: String { rawValue }
         var title: String {
             switch self {
+            case .system: return "Default"
             case .light: return "Light"
             case .dark: return "Dark"
-            case .system: return "Default"
+            
             }
         }
     }
