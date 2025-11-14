@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct Screen4: View {
-    @State private var WPM = 120
+    @State var WPM = 120
     @Binding var LGBW: Int
     @State private var CIS = 70
     @State private var score: Int = 2

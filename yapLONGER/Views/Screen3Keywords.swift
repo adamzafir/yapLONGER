@@ -30,7 +30,7 @@ struct Screen3Keywords: View {
     
     var body: some View {
         NavigationStack {
-            NavigationLink(destination: Screen4(elapsedTime: .constant(0), wordCount:.constant(0) ), isActive: $navigateToScreen4) { EmptyView() }
+            NavigationLink(destination: Screen4(LGBW: .constant(0), elapsedTime: .constant(0), wordCount:.constant(0) ), isActive: $navigateToScreen4) { EmptyView() }
             VStack(spacing: 20) {
                 if isLoading {
                     Spacer()

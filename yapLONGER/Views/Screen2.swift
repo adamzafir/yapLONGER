@@ -16,6 +16,10 @@ struct Screen2: View {
     @State var wordCount: Int = 0
     @State private var showPromptDialog = false
     @State private var rewriteError: String? = nil
+
+    // Added to satisfy Screen3Teleprompter requirements
+    @State private var WPM: Int = 120
+    @State private var timer = TimerManager()
     
     var body: some View {
         NavigationStack {
@@ -124,7 +128,7 @@ struct Screen2: View {
                     .background(.ultraThinMaterial)
             }
             .fullScreenCover(isPresented: $showScreent) {
-                Screen3Teleprompter(title: $title, script: $script)
+                Screen3Teleprompter(title: $title, script: $script, WPM: $WPM, timer: timer)
             }
             .fullScreenCover(isPresented: $showScreen) {
                 Screen3Keywords(title: $title, script: $script)
@@ -139,3 +143,4 @@ struct Screen2: View {
             script: .constant("This is a test script.")
         )
     }
+

@@ -62,31 +62,16 @@ struct Screen3Teleprompter: View {
     @State var scriptLines: [String] = []
     @State private var isLoading = true
     @AppStorage("fontSize") var fontSize: Double = 28
+    @Binding var WPM :Int
     @State private var tokensPerLine: [[String]] = []
     @State private var currentLineIndex: Int = 0
-    @State private var lastAdvanceTime: Date =
-        .distantPast
+    @State private var lastAdvanceTime: Date = .distantPast
     @State private var navigateToScreen4 = false
-<<<<<<< Updated upstream
-    @State private var currentDate = Date.now
-    @State private var elapsedTime: Int = 0
-    @State private var timer: Timer? = nil
-    
-    
-    @State private var showingAlert = false
-    var formattedTime: String {
-        let minutes = elapsedTime / 60
-        let seconds = elapsedTime % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-        
-    }
-=======
     @State var secondsPerWord: [Int] = []
     @State var scriptWords: [String] = []
     @State var timer: TimerManager
     @State var transscriptionChangeCount: Int = 0
     
->>>>>>> Stashed changes
     private func recomputeLines() {
         let font = UIFont.systemFont(ofSize: CGFloat(fontSize))
         let maxWidth = UIScreen.main.bounds.width - 32
@@ -106,7 +91,6 @@ struct Screen3Teleprompter: View {
             if nextIndex <= scriptLines.count {
                 currentLineIndex = min(nextIndex, scriptLines.count - 1)
                 lastAdvanceTime = now
-                
                 withAnimation(.easeInOut) {
                     scrollProxy.scrollTo(currentLineIndex, anchor: .top)
                 }
@@ -116,54 +100,52 @@ struct Screen3Teleprompter: View {
     
     var body: some View {
         NavigationStack {
-            // Hidden link to Screen4 that activates on stop
-            NavigationLink(destination: Screen4(elapsedTime: .constant(0), wordCount: .constant(0)), isActive: $navigateToScreen4) { EmptyView() }
             VStack {
-                if isLoading {
-                    ProgressView("Loading...")
-                        .progressViewStyle(CircularProgressViewStyle())
-                        .padding()
-                } else {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(Array(scriptLines.enumerated()), id: \.offset) { index, line in
-                                    Text(line)
-                                        .font(.system(size: CGFloat(fontSize)))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .id(index)
-                                        .background(index == currentLineIndex ? Color.primary.opacity(0.08) : Color.clear)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .onChange(of: currentLineIndex) { _, newValue in
-                            withAnimation(.easeInOut) {
-                                proxy.scrollTo(newValue, anchor: .top)
-                            }
-                        }
-                        .onAppear {
-                            if !scriptLines.isEmpty {
-                                proxy.scrollTo(0, anchor: .top)
-                            }
-                        }
-                        .onChange(of: transcription) { _, newValue in
-                            let tokens = normalizeAndTokenize(newValue)
-                            tryAdvance(using: tokens, scrollProxy: proxy)
-                            if transcription = scriptWords[0] {
-                                transscriptionChangeCount += 1
-                                scriptWords.remove(at: 0)
-                                if transscriptionChangeCount % 5 = 0 {
-                                    timer.stop()
-                                    secondsPerWord.append( timer.elapsedSeconds)
-                                }
-                                
-                            }
-                        }
-                    }
-                }
-                
-                Spacer()
+              if isLoading {
+                  ProgressView("Loading...")
+                      .progressViewStyle(CircularProgressViewStyle())
+                      .padding()
+              } else {
+                  ScrollViewReader { proxy in
+                      ScrollView {
+                         VStack(alignment: .leading, spacing: 12) {
+                             ForEach(Array(scriptLines.enumerated()), id: \.offset) { index, line in
+                                 Text(line)
+                                     .font(.system(size: CGFloat(fontSize)))
+                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                     .id(index)
+                                     .background(index == currentLineIndex ? Color.primary.opacity(0.08) : Color.clear)
+                             }
+                         }
+                         .frame(maxWidth: .infinity, alignment: .leading)
+                     }
+                     .onChange(of: currentLineIndex) { _, newValue in
+                         withAnimation(.easeInOut) {
+                             proxy.scrollTo(newValue, anchor: .top)
+                         }
+                     }
+                     .onAppear {
+                         if !scriptLines.isEmpty {
+                             proxy.scrollTo(0, anchor: .top)
+                         }
+                     }
+                     .onChange(of: transcription) { _, newValue in
+                         let tokens = normalizeAndTokenize(newValue)
+                         tryAdvance(using: tokens, scrollProxy: proxy)
+                         
+                         if !scriptWords.isEmpty && transcription == scriptWords[0] {
+                             transscriptionChangeCount += 1
+                             scriptWords.remove(at: 0)
+                             if transscriptionChangeCount % 5 == 0 {
+                                 timer.stop()
+                                 secondsPerWord.append(timer.elapsedSeconds)
+                             }
+                         }
+                     }
+                 }
+             }
+             
+           Spacer()
                 
                 HStack {
                     Button {
@@ -174,7 +156,8 @@ struct Screen3Teleprompter: View {
                             timer.reset()
                         } else {
                             timer.start()
-                            //let deviation = wpm.standardDeviation(from: secondsPerWord)
+                            let deviation = secondsPerWord.standardDeviation(from: Double(WPM))
+                            print(deviation)
                         }
                     } label: {
                         RecordButtonView(isRecording: $isRecording)
@@ -210,10 +193,7 @@ struct Screen3Teleprompter: View {
             }
             .onChange(of: isRecording) { _, recording in
                 if recording {
-                    // Start file recording
                     recordingStore.startRecording()
-                    
-                    // Start speech recognition
                     SFSpeechRecognizer.requestAuthorization { status in
                         guard status == .authorized else { return }
                     }
@@ -248,22 +228,12 @@ struct Screen3Teleprompter: View {
                         }
                     }
                 } else {
-                    // Stop both
                     recordingStore.stopRecording()
                     audioEngine.stop()
                     audioEngine.inputNode.removeTap(onBus: 0)
-                    // Navigate to Screen4 after stopping
                     navigateToScreen4 = true
                 }
             }
         }
     }
 }
-
-//#Preview {
-//    Screen3Teleprompter(
-//        title: .constant("The Impact of Social Media on Society"),
-//        script: .constant("Social media has profoundly transformed the way people communicate and interact with one another. Over the past decade, platforms like Facebook, Twitter, and Instagram have enabled instant sharing of information, connecting people across the globe. On the positive side, social media allows for real-time communication, collaboration, and access to educational resources. Social movements have gained traction through social media campaigns, giving a voice to marginalized communities. However, there are also significant drawbacks. The constant exposure to curated content can lead to unrealistic expectations, mental health issues, and the spread of misinformation. Social media algorithms often prioritize engagement over accuracy, amplifying sensationalized content. In addition, the addictive nature of these platforms can disrupt daily routines and productivity. It is essential for individuals to practice mindful consumption, critically evaluate content, and maintain a healthy balance between online and offline interactions to mitigate the negative effects of social media while still leveraging its potential for connectivity and learning."), timer: .constant(TimerManager)
-//    )
-//    .environmentObject(RecordingStore())
-//}
