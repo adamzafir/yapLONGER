@@ -2,6 +2,24 @@ import Foundation
 import SwiftUI
 import Combine
 
+struct Matrix {
+    let rows: Int
+    let cols: Int
+    var data: [[Double]]
+
+    init(_ data: [[Double]]) {
+        self.data = data
+        self.rows = data.count
+        self.cols = data.first?.count ?? 0
+    }
+
+    subscript(r: Int, c: Int) -> Double {
+        get { data[r][c] }
+        set { data[r][c] = newValue }
+    }
+}
+
+
 struct ScriptItem: Identifiable {
     var id: UUID
     var title: String
