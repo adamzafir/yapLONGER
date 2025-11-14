@@ -9,53 +9,7 @@ enum Tabs: Hashable {
 struct TabHolder: View {
     @State private var selectedTab: Tabs = .scripts
     @StateObject private var viewModel = Screen2ViewModel()
-
     var body: some View {
-        
-        #if os(macOS)
-        NavigationSplitView {
-
-            List(selection: $selectedTab) {
-                Label("Scripts", systemImage: "text.document")
-                    .tag(Tabs.scripts)
-
-                Label("Settings", systemImage: "gear")
-                    .tag(Tabs.settings)
-
-                Label("Add", systemImage: "plus")
-                    .tag(Tabs.add)
-            }
-            .navigationTitle("Sections")
-
-        } detail: {
-            switch selectedTab {
-            case .scripts:
-                NavigationStack {
-                    Screen1(viewModel: viewModel)
-                        .navigationTitle("Scripts")
-                }
-
-            case .settings:
-                NavigationStack {
-                    Settings()
-                        .navigationTitle("Settings")
-                }
-
-            case .add:
-                Color.clear
-                    .onAppear {
-                        let newItem = ScriptItem(
-                            id: UUID(),
-                            title: "Untitled Script",
-                            scriptText: "Type something..."
-                        )
-                        viewModel.scriptItems.append(newItem)
-                        selectedTab = .scripts
-                    }
-            }
-        }
-
-        #else
         TabView(selection: $selectedTab) {
 
             Tab("Scripts", systemImage: "text.document", value: Tabs.scripts) {
@@ -86,7 +40,6 @@ struct TabHolder: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        #endif
     }
 }
 
