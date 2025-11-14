@@ -4,7 +4,7 @@ import SwiftUI
 struct yapLONGERApp: App {
     var body: some Scene {
         WindowGroup {
-            TabHolder()
+            AudioRecorderView()
         }
     }
 }
