@@ -49,6 +49,8 @@ private func isSubsequence(_ small: [String], in big: [String]) -> Bool {
 }
 
 struct Screen3Teleprompter: View {
+    @EnvironmentObject private var recordingStore: RecordingStore
+    
     @State private var showAccessory = false
     let synthesiser = AVSpeechSynthesizer()
     let audioEngine = AVAudioEngine()
@@ -80,7 +82,6 @@ struct Screen3Teleprompter: View {
 
         let expected = tokensPerLine[currentLineIndex]
         if expected.isEmpty || isSubsequence(expected, in: recognizedTokens) {
-            // Advance exactly one line
             let nextIndex = currentLineIndex + 1
             if nextIndex <= scriptLines.count {
                 currentLineIndex = min(nextIndex, scriptLines.count - 1)
@@ -170,6 +171,10 @@ struct Screen3Teleprompter: View {
             }
             .onChange(of: isRecording) { _, recording in
                 if recording {
+                    // Start file recording
+                    recordingStore.startRecording()
+                    
+                    // Start speech recognition
                     SFSpeechRecognizer.requestAuthorization { status in
                         guard status == .authorized else { return }
                     }
@@ -182,7 +187,7 @@ struct Screen3Teleprompter: View {
                     guard let recogniser = speechRecogniser, recogniser.isAvailable else { return }
 
                     let audioSession = AVAudioSession.sharedInstance()
-                    try? audioSession.setCategory(.record, mode: .measurement)
+                    try? audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
                     try? audioSession.setActive(true)
 
                     let request = SFSpeechAudioBufferRecognitionRequest()
@@ -204,6 +209,8 @@ struct Screen3Teleprompter: View {
                         }
                     }
                 } else {
+                    // Stop both
+                    recordingStore.stopRecording()
                     audioEngine.stop()
                     audioEngine.inputNode.removeTap(onBus: 0)
                 }
@@ -217,4 +224,5 @@ struct Screen3Teleprompter: View {
         title: .constant("The Impact of Social Media on Society"),
         script: .constant("Social media has profoundly transformed the way people communicate and interact with one another. Over the past decade, platforms like Facebook, Twitter, and Instagram have enabled instant sharing of information, connecting people across the globe. On the positive side, social media allows for real-time communication, collaboration, and access to educational resources. Social movements have gained traction through social media campaigns, giving a voice to marginalized communities. However, there are also significant drawbacks. The constant exposure to curated content can lead to unrealistic expectations, mental health issues, and the spread of misinformation. Social media algorithms often prioritize engagement over accuracy, amplifying sensationalized content. In addition, the addictive nature of these platforms can disrupt daily routines and productivity. It is essential for individuals to practice mindful consumption, critically evaluate content, and maintain a healthy balance between online and offline interactions to mitigate the negative effects of social media while still leveraging its potential for connectivity and learning.")
     )
+    .environmentObject(RecordingStore())
 }
