@@ -9,6 +9,7 @@ struct Screen5: View {
     @State private var progressTimer: Timer?
     @State private var isScrubbing = false
     @Binding var scoreTwo: Double
+    @State private var audios: [URL] = []
     
     // Gauge progress (0.0 ... 1.0)
     @State private var gaugeProgress: Double = 0.67
@@ -35,11 +36,15 @@ struct Screen5: View {
     }
 
     private func playProvidedRecordingIfAvailable() {
-        guard let url = recordingURL else { return }
+        guard let url = recordingURL else {
+            print("No recordingURL provided to Screen5.")
+            return
+        }
         configureAudioSessionForPlayback()
         do {
             audioPlayer = try AVAudioPlayer(contentsOf: url)
             duration = audioPlayer?.duration ?? 0
+            currentTime = 0
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
             startProgressTimer()
@@ -116,20 +121,35 @@ struct Screen5: View {
                     Button {
                         configureAudioSessionForPlayback()
 
-                        guard let player = audioPlayer else {
-                            currentTime = 0
-                            playSound(sound: "cooked-dog-meme", type: "mp3")
-                            return
-                        }
-
-                        if player.isPlaying {
-                            player.pause()
-                            progressTimer?.invalidate()
-                            progressTimer = nil
+                        if let player = audioPlayer {
+                            if player.isPlaying {
+                                player.pause()
+                                progressTimer?.invalidate()
+                                progressTimer = nil
+                            } else {
+                                player.currentTime = currentTime
+                                player.play()
+                                startProgressTimer()
+                            }
                         } else {
-                            player.currentTime = currentTime
-                            player.play()
-                            startProgressTimer()
+                            // No player yet — try to build one from the passed-in recordingURL
+                            if let url = recordingURL {
+                                do {
+                                    let player = try AVAudioPlayer(contentsOf: url)
+                                    audioPlayer = player
+                                    duration = player.duration
+                                    player.currentTime = currentTime
+                                    player.prepareToPlay()
+                                    player.play()
+                                    startProgressTimer()
+                                } catch {
+                                    print("Failed to init player with recordingURL:", error)
+                                }
+                            } else {
+                                // Optional: fallback to nothing or a bundled sample
+                                // playSound(sound: "cooked-dog-meme", type: "mp3")
+                                print("No recordingURL available to play.")
+                            }
                         }
                     } label: {
                         let isPlaying = audioPlayer?.isPlaying == true
@@ -150,8 +170,9 @@ struct Screen5: View {
             .padding()
             .navigationTitle("Review")
             .onAppear {
+                // If you prefer auto-play when Screen5 appears, uncomment:
+                // playProvidedRecordingIfAvailable()
                 configureAudioSessionForPlayback()
-                playProvidedRecordingIfAvailable()
             }
             .onDisappear {
                 progressTimer?.invalidate()
@@ -164,6 +185,17 @@ struct Screen5: View {
         guard t.isFinite && !t.isNaN else { return "0:00" }
         let total = Int(t.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+    private func getAudios() {
+        do {
+            let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let result = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [])
+            self.audios = result
+                .filter { $0.pathExtension.lowercased() == "m4a" }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        } catch {
+            print("List audios error: \(error.localizedDescription)")
+        }
     }
 }
 
