@@ -13,7 +13,7 @@ struct TabHolder: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("Scripts", systemImage: "highlighter.badge.ellipsis", value: Tabs.scripts) {
+            Tab("Scripts", systemImage: "text.document", value: Tabs.scripts) {
                 Screen1(viewModel: viewModel)
             }
             
