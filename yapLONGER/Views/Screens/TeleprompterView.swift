@@ -68,7 +68,7 @@ struct Screen3Teleprompter: View {
     @State private var currentLineIndex: Int = 0
     @State private var lastAdvanceTime: Date = .distantPast
     @State private var navigateToScreen4 = false
-    @State var secondsPerWord: [Int] = []
+    @State var secondsPerWord: [Double] = []
     @State var scriptWords: [String] = []
     @State var timer: TimerManager
     @State var transscriptionChangeCount: Int = 0
@@ -239,13 +239,16 @@ struct Screen3Teleprompter: View {
                          let tokens = normalizeAndTokenize(newValue)
                          tryAdvance(using: tokens, scrollProxy: proxy)
                          
-                         if !scriptWords.isEmpty && transcription == scriptWords[0] {
+                         if !scriptWords.isEmpty && transcription.contains(scriptWords[0]) {
                              transscriptionChangeCount += 1
                              scriptWords.remove(at: 0)
                              if transscriptionChangeCount % 5 == 0 {
-                                 timer.stop()
-                                 secondsPerWord.append(timer.elapsedSeconds)
+                                 let chunkTime = timer.elapsedSeconds
+                                 secondsPerWord.append(chunkTime)
+                                 timer.reset()
+                                 timer.start()
                              }
+
                          }
                      }
                  }
@@ -254,6 +257,10 @@ struct Screen3Teleprompter: View {
            Spacer()
                 
                 HStack {
+                    Text("DEBUG: \(secondsPerWord.description)")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.top, 10)
                     Button {
                         isRecording.toggle()
                         showAccessory.toggle()

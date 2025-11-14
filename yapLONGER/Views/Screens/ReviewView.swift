@@ -69,7 +69,6 @@ struct Screen4: View {
         let computed = Int(round(Double(wordCount) / minutes))
         WPM = max(0, computed)
     }
-    
     var body: some View {
         NavigationStack {
             VStack {
