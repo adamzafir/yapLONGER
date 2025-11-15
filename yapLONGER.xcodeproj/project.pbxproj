@@ -12,9 +12,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		66C863D02EC1AA94007A5F08 /* yapLONGER */ = {
+		66C863D02EC1AA94007A5F08 /* iOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = yapLONGER;
+			path = iOS;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -34,7 +34,7 @@
 			isa = PBXGroup;
 			children = (
 				66157EED2EC61AE5001EF93E /* Info.plist */,
-				66C863D02EC1AA94007A5F08 /* yapLONGER */,
+				66C863D02EC1AA94007A5F08 /* iOS */,
 				66C863CF2EC1AA94007A5F08 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -63,7 +63,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				66C863D02EC1AA94007A5F08 /* yapLONGER */,
+				66C863D02EC1AA94007A5F08 /* iOS */,
 			);
 			name = yapLONGER;
 			packageProductDependencies = (
