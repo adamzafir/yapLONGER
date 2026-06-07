@@ -175,10 +175,20 @@ struct Screen22: View {
                 }
                 #else
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 20) {
-                        Button { showScreent = true } label: {
-                            Image(systemName: "music.microphone")
+                    Menu {
+                        Button {
+                            showPromptDialog = true
+                        } label: {
+                            Label("Rewrite with Apple Intelligence", systemImage: "wand.and.stars")
                         }
+
+                        Button {
+                            showScreent = true
+                        } label: {
+                            Label("Start Practice", systemImage: "mic.fill")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
                 
@@ -197,21 +207,36 @@ struct Screen22: View {
                 #endif
             }
         }
-        .overlay(alignment: .bottom) {
-            // Show only when neither field is focused and user isn't actively typing
+        .safeAreaInset(edge: .bottom) {
             if showEstimate && !isEditingScript && !isEditingTitle && !isTyping {
-                VStack(spacing: 6) {
-                    Text("""
-                        Word Count: \(wordCount)
-                        Estimated Time: \(wrdEstimateString(for: wordCount, wpm: WPM))
-                        """)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
+                VStack(spacing: 10) {
+                    HStack {
+                        Label("\(wordCount) words", systemImage: "text.word.spacing")
+                        Spacer()
+                        Label(wrdEstimateString(for: wordCount, wpm: WPM), systemImage: "clock")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .glassEffect()
+
+                    Button {
+                        showScreent = true
+                    } label: {
+                        Label("Practice This Script", systemImage: "mic.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .foregroundStyle(.white)
+                            .background(Color.pri)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+                .background(.regularMaterial)
             }
         }
         #if os(macOS)

@@ -26,9 +26,15 @@ struct PastReviewsView: View {
                                     .environmentObject(viewModel)
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("WPM \(review.wpm) • CIS \(review.cis)%")
+                                    Text("\(review.wpm) WPM · \(review.cis)% steady")
                                         .fontWeight(.semibold)
-                                    Text(review.date, style: .date)
+                                    HStack(spacing: 6) {
+                                        Text(review.date, style: .date)
+                                        if let pitch = review.pitchVariation {
+                                            Text("·")
+                                            Text("Pitch \(pitch)%")
+                                        }
+                                    }
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }

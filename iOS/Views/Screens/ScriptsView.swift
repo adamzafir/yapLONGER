@@ -1,13 +1,16 @@
 import SwiftUI
 
+private enum ScriptRoute: Hashable {
+    case editor(UUID)
+    case reviews(UUID)
+}
+
 struct Screen1: View {
     @ObservedObject var viewModel: Screen2ViewModel
-    // @AppStorage("betashit") private var isBeta: Bool = false // COMMENTED OUT: beta flag not used
-    @State private var selectedID: ScriptItem.ID? = nil
-    @State private var pastReviewsTarget: ScriptItem.ID? = nil
+    @State private var path: [ScriptRoute] = []
     
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Group {
                     if viewModel.scriptItems.isEmpty {
@@ -18,22 +21,34 @@ struct Screen1: View {
                         }
                        
                     } else {
-                        Form {
+                        List {
                             ForEach($viewModel.scriptItems) { $item in
-                                NavigationLink(tag: item.id, selection: $selectedID) {
-                                    // Always show the main editor; beta/keywords disabled
-                                    Screen22(scriptItemID: item.id, title: $item.title, script: $item.scriptText)
-                                        .onAppear { viewModel.markAccessed(id: item.id) }
-                                } label: {
-                                    Text(item.title)
+                                NavigationLink(value: ScriptRoute.editor(item.id)) {
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(item.title.isEmpty ? "Untitled Script" : item.title)
+                                            .font(.headline)
+                                            .lineLimit(1)
+                                        HStack(spacing: 6) {
+                                            Text("\(item.scriptText.split(whereSeparator: \.isWhitespace).count) words")
+                                            Text("·")
+                                            Text("\(item.pastReviews.reviewsItems.count) reviews")
+                                            if item.lastAccessed != .distantPast {
+                                                Text("·")
+                                                Text(item.lastAccessed, style: .relative)
+                                            }
+                                        }
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.vertical, 4)
                                 }
                                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                     Button {
-                                        pastReviewsTarget = item.id
+                                        path.append(.reviews(item.id))
                                     } label: {
                                         Label("Past Reviews", systemImage: "clock.arrow.circlepath")
                                     }
-                                    .tint(.sec)
+                                .tint(.pri)
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button(role: .destructive) {
@@ -44,20 +59,6 @@ struct Screen1: View {
                                         Label("Delete", systemImage: "trash")
                                     }
                                 }
-                                .background(
-                                    NavigationLink(
-                                        "",
-                                        destination: PastReviewsView(scriptID: item.id)
-                                            .environmentObject(viewModel),
-                                        isActive: Binding(
-                                            get: { pastReviewsTarget == item.id },
-                                            set: { active in
-                                                pastReviewsTarget = active ? item.id : nil
-                                            }
-                                        )
-                                    )
-                                    .hidden()
-                                )
                             }
                         }
                     }
@@ -67,30 +68,52 @@ struct Screen1: View {
                     Spacer()
                     Button {
                         viewModel.addNewScriptAtFront()
-                        selectedID = viewModel.scriptItems.first?.id
-                    } label: {
-                        VStack {
-                            Text("New Script")
-                                .frame(maxWidth: .infinity)
-                                .font(.headline)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .padding()
-                                .background(
-                                    Capsule()
-                                        .fill(Color.pri)
-                                )
-                                .glassEffect()
+                        if let id = viewModel.scriptItems.first?.id {
+                            path.append(.editor(id))
                         }
-                        .shadow(color: Color.black.opacity(0.1), radius: 12, x: 0, y: 4)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    } label: {
+                        Label("New Script", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 15)
+                            .background(Color.pri)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
-                    .padding(.horizontal)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 10)
                 }
             }
             .navigationTitle("Scripts")
+            .navigationDestination(for: ScriptRoute.self) { route in
+                switch route {
+                case .editor(let id):
+                    if let item = binding(for: id) {
+                        Screen22(
+                            scriptItemID: id,
+                            title: item.title,
+                            script: item.scriptText
+                        )
+                        .onAppear { viewModel.markAccessed(id: id) }
+                    } else {
+                        ContentUnavailableView("Script not found", systemImage: "exclamationmark.triangle")
+                    }
+                case .reviews(let id):
+                    PastReviewsView(scriptID: id)
+                        .environmentObject(viewModel)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        Settings()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
         }
     }
     
@@ -101,5 +124,22 @@ struct Screen1: View {
     private func deleteItems(at index: Int) {
         guard index < viewModel.scriptItems.count else { return }
         viewModel.scriptItems.remove(at: index)
+    }
+
+    private func binding(for id: ScriptItem.ID) -> Binding<ScriptItem>? {
+        guard let initialValue = viewModel.scriptItems.first(where: { $0.id == id }) else {
+            return nil
+        }
+        return Binding(
+            get: {
+                viewModel.scriptItems.first(where: { $0.id == id }) ?? initialValue
+            },
+            set: { updatedValue in
+                guard let index = viewModel.scriptItems.firstIndex(where: { $0.id == id }) else {
+                    return
+                }
+                viewModel.scriptItems[index] = updatedValue
+            }
+        )
     }
 }

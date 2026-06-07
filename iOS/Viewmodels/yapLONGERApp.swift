@@ -6,12 +6,6 @@ struct yapLONGERApp: App {
     @StateObject private var scriptsViewModel = Screen2ViewModel()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
 
-    init() {
-        #if DEBUG
-        UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
-        #endif
-    }
-    
     var body: some Scene {
         WindowGroup {
             Group {

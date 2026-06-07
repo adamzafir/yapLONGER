@@ -1,354 +1,308 @@
 import SwiftUI
-import AVFoundation
-import Speech
-import Accelerate
-#if os(iOS)
-import UIKit
-typealias PlatformFont = UIFont
-#elseif os(macOS)
-import AppKit
-typealias PlatformFont = NSFont
-#endif
-
-#if os(iOS)
-private func platformScreenWidth() -> CGFloat {
-    UIScreen.main.bounds.width
-}
-#elseif os(macOS)
-private func platformScreenWidth() -> CGFloat {
-    NSScreen.main?.frame.width ?? 800
-}
-#endif
-
-private func splitLines(_ text: String, font: PlatformFont, width: CGFloat) -> [String] {
-    let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-    var out:[String]=[]
-    var line=""
-    for w in words {
-        let t = line.isEmpty ? w : "\(line) \(w)"
-        if (t as NSString).size(withAttributes:[.font:font]).width <= width {
-            line=t
-        } else {
-            if !line.isEmpty { out.append(line) }
-            line=w
-        }
-    }
-    if !line.isEmpty { out.append(line) }
-    return out
-}
-
-private func normTokens(_ s:String)->[String]{
-    s.lowercased()
-     .unicodeScalars
-     .map{ CharacterSet.punctuationCharacters.contains($0) ? " " : String($0) }
-     .joined()
-     .split(whereSeparator:\.isWhitespace)
-     .map(String.init)
-}
 
 struct Screen3Teleprompter: View {
-    // The ScriptItem this teleprompter session belongs to
     var scriptItemID: UUID? = nil
 
-    @EnvironmentObject var recordingStore:RecordingStore
-    @EnvironmentObject var scriptsViewModel: Screen2ViewModel
     @Environment(\.dismiss) private var dismiss
-    @Binding var title:String
-    @Binding var script:String
-    @Binding var WPM:Int
-    @Binding var isPresented:Bool
-    
-    @AppStorage("fontSize") private var fontSize:Double = 28
-    @State var fontChoice: Settings.FontSizeChoice = .default
-    @State private var customSize:Double = 28
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
+    @Binding var title: String
+    @Binding var script: String
+    @Binding var WPM: Int
+    @Binding var isPresented: Bool
 
-    @State private var scriptLines:[String]=[]
-    @State private var tokensPerLine:[[String]]=[]
-    @State private var currentLine=0
+    @AppStorage("fontSize") private var fontSize: Double = 28
+    @StateObject private var session = PracticeSessionController()
+    @State private var renderedLines: [RenderedScriptLine] = []
+    @State private var reviewDraft = Review(cis: 0, wpm: 0)
+    @State private var navigateToReview = false
+    @State private var fontChoice: Settings.FontSizeChoice = .default
+    @State private var customSize = 28.0
+    @State private var showDiscardConfirmation = false
+    @State private var finishTask: Task<Void, Never>?
 
-    @State private var transcription=""
-    @State private var isRecording=false
-    @State private var navigate=false
-    @State private var isLoading=true
-    @State private var reviewDraft = Review(cis: 0, wpm: 0, audioURL: nil, date: Date())
-
-    @State private var wallTimer:Timer?
-    @State private var elapsed=0
-    @State private var wordCount=0
-
-    @State private var silenceDurations:[TimeInterval]=[]
-    @State private var LGBWSeconds:TimeInterval=0
-    @State private var isSilent=true
-    @State private var lastSilenceStart:Date?
-
-    @State private var audioEngine=AVAudioEngine()
-    @State private var req:SFSpeechAudioBufferRecognitionRequest?
-    @State private var task:SFSpeechRecognitionTask?
-
-    private let silenceThresh:Float = -40
-    private let minSilence:TimeInterval = 0.25
-    private let recogniser=SFSpeechRecognizer(locale:.current)
-
-    private func recompute() {
-        let f = PlatformFont.systemFont(ofSize: CGFloat(fontSize))
-        scriptLines = splitLines(script, font: f, width: platformScreenWidth() - 32)
-        tokensPerLine = scriptLines.map(normTokens)
-    }
-
-    private func startWall(){
-        wallTimer?.invalidate()
-        elapsed=0
-        wallTimer = Timer.scheduledTimer(withTimeInterval:1,repeats:true){_ in elapsed+=1}
-        RunLoop.current.add(wallTimer!, forMode:.common)
-    }
-
-    private func stopWall(){
-        wallTimer?.invalidate()
-        wallTimer=nil
-    }
-
-    private func handleLevel(_ db:Float){
-        let now=Date()
-        if db <= silenceThresh {
-            if !isSilent { isSilent=true; lastSilenceStart=now }
-        } else {
-            if isSilent {
-                isSilent=false
-                if let st=lastSilenceStart {
-                    let d=now.timeIntervalSince(st)
-                    if d>=minSilence {
-                        silenceDurations.append(d)
-                        if d>LGBWSeconds { LGBWSeconds=d }
-                    }
-                }
-            }
-        }
-    }
-
-    private func finalizeSilence(){
-        if isSilent, let st=lastSilenceStart {
-            let d=Date().timeIntervalSince(st)
-            if d>=minSilence {
-                silenceDurations.append(d)
-                if d>LGBWSeconds { LGBWSeconds=d }
-            }
-        }
-    }
-
-    private func dB(_ b:AVAudioPCMBuffer)->Float{
-        guard let cd=b.floatChannelData else{return -120}
-        let c=cd[0]; let n=Int(b.frameLength)
-        if n==0 {return -120}
-        var sum:Float=0
-        vDSP_measqv(c,1,&sum,vDSP_Length(n))
-        let rms=sqrtf(sum)
-        let db=20*log10f(max(rms,1e-7))
-        return db.isFinite ? db : -120
-    }
-
-    private func startRecog(){
-        SFSpeechRecognizer.requestAuthorization{_ in}
-        #if os(iOS)
-        let s=AVAudioSession.sharedInstance()
-        try? s.setCategory(.playAndRecord,mode:.default,options:[.defaultToSpeaker,.allowBluetooth])
-        try? s.setActive(true)
-        #endif
-
-        let r=SFSpeechAudioBufferRecognitionRequest()
-        r.shouldReportPartialResults=true
-        req=r
-
-        let input=audioEngine.inputNode
-        let fmt=input.outputFormat(forBus:0)
-        input.removeTap(onBus:0)
-        input.installTap(onBus:0,bufferSize:1024,format:fmt){buf,_ in
-            r.append(buf)
-            self.handleLevel(self.dB(buf))
-        }
-
-        audioEngine.prepare()
-        try? audioEngine.start()
-
-        task = recogniser?.recognitionTask(with:r){res,err in
-            if let res { self.transcription=res.bestTranscription.formattedString }
-            if err != nil { self.stopRecog() }
-        }
-    }
-
-    private func stopRecog(){
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus:0)
-        audioEngine.reset()
-        req?.endAudio()
-        task?.cancel()
-        req=nil
-        task=nil
-        #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false)
-        #endif
-    }
-
-    private func tryAdvance(_ tokens:[String], _ proxy:ScrollViewProxy){
-        if currentLine >= tokensPerLine.count { return }
-        guard let last = tokensPerLine[currentLine].last else { return }
-        if tokens.contains(last) {
-            currentLine += 1
-            withAnimation(.easeInOut){
-                proxy.scrollTo(currentLine,anchor:.top)
-            }
-        }
-    }
-
-    private func computeCIS()->Double {
-        if silenceDurations.isEmpty { return 100 }
-        let m=silenceDurations.reduce(0,+)/Double(silenceDurations.count)
-        let v=silenceDurations.reduce(0){$0+pow($1-m,2)}/Double(silenceDurations.count)
-        let sd=sqrt(v)
-        let base=100/(1+sd)
-        let p = LGBWSeconds<=0.5 ? 0 : min(40,(LGBWSeconds-0.5)*25)
-        return max(0,base-p)
-    }
-
-    private func computeWPMValue() -> Int {
-        guard elapsed > 0 else { return 0 }
-        let min = Double(elapsed) / 60
-        return max(0, Int(round(Double(wordCount) / min)))
-    }
-
-    private func finalizeReviewDraft() {
-        let cis = Int(computeCIS().rounded())
-        let wpm = computeWPMValue()
-        reviewDraft = Review(
-            cis: cis,
-            wpm: wpm,
-            audioURL: recordingStore.latestRecordingURL,
-            date: Date()
-        )
+    private var layoutWidth: CGFloat {
+        horizontalSizeClass == .regular ? 620 : 340
     }
 
     var body: some View {
         NavigationStack {
-            NavigationLink("", destination:
+            VStack(spacing: 0) {
+                sessionStatus
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+
+                Divider()
+
+                scriptReader
+
+                Divider()
+
+                practiceControls
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(.regularMaterial)
+            }
+            .background(Color(uiColor: .systemBackground))
+            .navigationTitle(title.isEmpty ? "Practice" : title)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $navigateToReview) {
                 ReviewView(
                     review: $reviewDraft,
                     scriptItemID: scriptItemID,
                     showsSaveButton: true,
                     autoPersistOnAppear: true,
                     onDismiss: { isPresented = false }
-                ), isActive:$navigate
-            )
-
-            VStack {
-                if isLoading {
-                    ProgressView("Loading...")
-                } else {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment:.leading){
-                                ForEach(Array(scriptLines.enumerated()),id:\.offset){i,l in
-                                    Text(l)
-                                        .font(.system(size:CGFloat(fontSize)))
-                                        .id(i)
-                                        .padding(.vertical,4)
-                                        .background(i==currentLine ? Color.primary.opacity(0.1):.clear)
-                                }
-                            }.padding()
-                        }
-                        .onChange(of: transcription){ _,v in
-                            tryAdvance(normTokens(v),proxy)
-                        }
-                    }
-                }
-
-                Button {
-                    isRecording.toggle()
-                    if isRecording {
-                        reviewDraft = Review(cis: 0, wpm: 0, audioURL: nil, date: Date())
-                        silenceDurations=[]
-                        LGBWSeconds=0
-                        isSilent=true
-                        lastSilenceStart=Date()
-                        recordingStore.startRecording()
-                        startWall()
-                        startRecog()
-                    } else {
-                        recordingStore.stopRecording()
-                        stopRecog()
-                        stopWall()
-                        finalizeSilence()
-                        finalizeReviewDraft()
-                        navigate=true
-                    }
-                } label: {
-                    RecordButtonView(isRecording:$isRecording)
-                }
-                .padding(.bottom,20)
+                )
             }
-            .navigationTitle(title)
             .toolbar {
-                #if os(macOS)
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Picker("Font Size", selection: $fontChoice) {
-                            ForEach(Settings.FontSizeChoice.allCases) { c in Text(c.title).tag(c) }
-                        }
-                        .onChange(of: fontChoice) { _, v in
-                            if let p = v.presetValue {
-                                fontSize = p
-                                customSize = p
-                            }
-                        }
-                        if fontChoice == .custom {
-                            Slider(value: $customSize, in: 10...60, step: 1)
-                                .onChange(of: customSize) { _, v in fontSize = v }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        if session.isRecording {
+                            showDiscardConfirmation = true
+                        } else {
+                            session.abandon()
+                            dismiss()
                         }
                     } label: {
-                        Image(systemName: "textformat.size")
-                    }
-                }
-
-                ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: {
                         Image(systemName: "xmark")
                     }
-                }
-                #else
-                ToolbarItem(placement:.topBarTrailing){
-                    Menu{
-                        Picker("Font Size",selection:$fontChoice){
-                            ForEach(Settings.FontSizeChoice.allCases){c in Text(c.title).tag(c) }
-                        }
-                        .onChange(of:fontChoice){_,v in
-                            if let p=v.presetValue {
-                                fontSize=p
-                                customSize=p
-                            }
-                        }
-                        if fontChoice == .custom {
-                            Slider(value:$customSize,in:10...60,step:1)
-                                .onChange(of:customSize){_,v in fontSize=v }
-                        }
-                    } label: {
-                        Image(systemName:"textformat.size")
-                    }
+                    .accessibilityLabel("Close practice")
                 }
 
-                ToolbarItem(placement:.topBarLeading){
-                    Button { dismiss() } label: {
-                        Image(systemName:"xmark")
-                    }
+                ToolbarItem(placement: .topBarTrailing) {
+                    fontMenu
                 }
-                #endif
             }
-            .onAppear{
+            .alert("Practice Unavailable", isPresented: Binding(
+                get: { session.errorMessage != nil },
+                set: { if !$0 { session.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(session.errorMessage ?? "")
+            }
+            .confirmationDialog(
+                "Discard this practice?",
+                isPresented: $showDiscardConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Discard Practice", role: .destructive) {
+                    session.abandon()
+                    dismiss()
+                }
+                Button("Keep Practicing", role: .cancel) {}
+            } message: {
+                Text("The current recording and unsaved feedback will be deleted.")
+            }
+            .onAppear {
                 fontChoice = Settings.FontSizeChoice.fromStored(fontSize)
                 customSize = fontSize
-                wordCount = script.split(whereSeparator:\.isWhitespace).count
-                recompute()
-                isLoading=false
+                recomputeLines()
             }
-            .onChange(of:fontSize){_,_ in recompute() }
-            .onChange(of:script){_,_ in wordCount = script.split(whereSeparator:\.isWhitespace).count; recompute() }
+            .onChange(of: fontSize) { _, _ in recomputeLines() }
+            .onChange(of: script) { _, _ in recomputeLines() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background, session.isRecording {
+                    finishPractice()
+                }
+            }
+            .onChange(of: session.shouldFinishSession) { _, shouldFinish in
+                if shouldFinish, session.isRecording {
+                    finishPractice()
+                }
+            }
+            .onDisappear {
+                finishTask?.cancel()
+                if !navigateToReview {
+                    session.abandon()
+                }
+            }
+        }
+    }
+
+    private var sessionStatus: some View {
+        HStack(spacing: 12) {
+            Label(session.formattedElapsedTime, systemImage: "timer")
+                .monospacedDigit()
+
+            Spacer()
+
+            if session.isRecording {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 8, height: 8)
+                    Text(session.driftState == .drifting ? "Finding your place" : "Listening")
+                }
+                .foregroundStyle(session.driftState == .drifting ? .orange : .secondary)
+            } else if session.isAnalyzing {
+                Label("Analyzing", systemImage: "waveform.badge.magnifyingglass")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Ready")
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 0) {
+                Text("\(session.liveWordsPerMinute)")
+                    .font(.headline)
+                    .monospacedDigit()
+                Text("WPM")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 44)
+        }
+        .font(.subheadline.weight(.medium))
+    }
+
+    private var scriptReader: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(renderedLines) { line in
+                        Text(line.displayText)
+                            .font(.system(size: fontSize, weight: line.index == session.activeLineIndex ? .semibold : .regular))
+                            .foregroundStyle(lineColor(for: line.index))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background {
+                                if line.index == session.activeLineIndex {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.pri.opacity(0.12))
+                                }
+                            }
+                            .id(line.index)
+                            .accessibilityLabel(
+                                line.index == session.activeLineIndex
+                                    ? "Current line, \(line.displayText)"
+                                    : line.displayText
+                            )
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 24)
+            }
+            .onChange(of: session.activeLineIndex) { _, newIndex in
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(newIndex, anchor: .center)
+                }
+            }
+        }
+    }
+
+    private var practiceControls: some View {
+        VStack(spacing: 10) {
+            Button {
+                if session.isRecording {
+                    finishPractice()
+                } else {
+                    Task {
+                        await session.start()
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    if session.isAnalyzing {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: session.isRecording ? "stop.fill" : "mic.fill")
+                    }
+                    Text(
+                        session.isAnalyzing
+                            ? "Analyzing delivery..."
+                            : (session.isRecording ? "Finish practice" : "Start practice")
+                    )
+                    .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .foregroundStyle(.white)
+                .background(session.isRecording ? Color.red : Color.pri)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .disabled(session.isAnalyzing || renderedLines.isEmpty)
+
+            Text(
+                session.isRecording
+                    ? "\(session.recognizedWordCount) words recognized"
+                    : "Speak naturally. The script follows your voice."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var fontMenu: some View {
+        Menu {
+            Picker("Font Size", selection: $fontChoice) {
+                ForEach(Settings.FontSizeChoice.allCases) { choice in
+                    Text(choice.title).tag(choice)
+                }
+            }
+            .onChange(of: fontChoice) { _, choice in
+                if let preset = choice.presetValue {
+                    fontSize = preset
+                    customSize = preset
+                }
+            }
+
+            if fontChoice == .custom {
+                Slider(value: $customSize, in: 14...60, step: 1)
+                    .onChange(of: customSize) { _, value in
+                        fontSize = value
+                    }
+            }
+        } label: {
+            Image(systemName: "textformat.size")
+        }
+        .disabled(session.isRecording || session.isAnalyzing)
+        .accessibilityLabel("Teleprompter font size")
+    }
+
+    private func recomputeLines() {
+        #if os(iOS)
+        renderedLines = ScriptRenderService.renderLines(
+            text: script,
+            fontSize: fontSize,
+            width: layoutWidth
+        )
+        #else
+        let words = script.split(whereSeparator: \.isWhitespace).map(String.init)
+        renderedLines = words.enumerated().map { index, word in
+            RenderedScriptLine(
+                index: index,
+                displayText: word,
+                normalizedTokens: ScriptRenderService.normalizeTokens(word)
+            )
+        }
+        #endif
+        session.configure(lines: renderedLines)
+    }
+
+    private func lineColor(for index: Int) -> Color {
+        if index < session.activeLineIndex {
+            return .secondary
+        }
+        return .primary
+    }
+
+    private func finishPractice() {
+        guard finishTask == nil else { return }
+        finishTask = Task {
+            defer { finishTask = nil }
+            guard let review = await session.stopAndAnalyze(), !Task.isCancelled else {
+                return
+            }
+            reviewDraft = review
+            WPM = review.wpm
+            navigateToReview = true
         }
     }
 }

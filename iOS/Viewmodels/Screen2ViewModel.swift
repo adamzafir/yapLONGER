@@ -6,13 +6,34 @@ struct Review: Identifiable, Codable {
     var id: UUID
     var cis: Int
     var wpm: Int
+    var pauseControl: Int
+    var pitchVariation: Int?
+    var pitchConfidence: Double?
+    var recognizedWordCount: Int?
+    var duration: TimeInterval?
     var audioURL: URL?
     var date: Date
 
-    init(id: UUID = UUID(), cis: Int, wpm: Int, audioURL: URL? = nil, date: Date = Date()) {
+    init(
+        id: UUID = UUID(),
+        cis: Int,
+        wpm: Int,
+        pauseControl: Int = 0,
+        pitchVariation: Int? = nil,
+        pitchConfidence: Double? = nil,
+        recognizedWordCount: Int? = nil,
+        duration: TimeInterval? = nil,
+        audioURL: URL? = nil,
+        date: Date = Date()
+    ) {
         self.id = id
         self.cis = cis
         self.wpm = wpm
+        self.pauseControl = pauseControl
+        self.pitchVariation = pitchVariation
+        self.pitchConfidence = pitchConfidence
+        self.recognizedWordCount = recognizedWordCount
+        self.duration = duration
         self.audioURL = audioURL
         self.date = date
     }
@@ -22,8 +43,23 @@ struct Review: Identifiable, Codable {
         id = try container.decode(UUID.self, forKey: .id)
         cis = (try? container.decode(Int.self, forKey: .cis)) ?? 0
         wpm = (try? container.decode(Int.self, forKey: .wpm)) ?? 0
+        pauseControl = (try? container.decode(Int.self, forKey: .pauseControl)) ?? cis
+        pitchVariation = try? container.decode(Int.self, forKey: .pitchVariation)
+        pitchConfidence = try? container.decode(Double.self, forKey: .pitchConfidence)
+        recognizedWordCount = try? container.decode(Int.self, forKey: .recognizedWordCount)
+        duration = try? container.decode(TimeInterval.self, forKey: .duration)
         audioURL = try? container.decode(URL.self, forKey: .audioURL)
         date = (try? container.decode(Date.self, forKey: .date)) ?? Date()
+    }
+
+    var resolvedAudioURL: URL? {
+        guard let audioURL else { return nil }
+        if FileManager.default.fileExists(atPath: audioURL.path) {
+            return audioURL
+        }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let migratedURL = documents.appendingPathComponent(audioURL.lastPathComponent)
+        return FileManager.default.fileExists(atPath: migratedURL.path) ? migratedURL : nil
     }
 }
 
@@ -91,7 +127,6 @@ class Screen2ViewModel: NSObject, ObservableObject {
         $scriptItems
             .debounce(for: .milliseconds(250), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.sortByRecency()
                 self?.save()
             }
             .store(in: &cancellables)

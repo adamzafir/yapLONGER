@@ -2,8 +2,8 @@ import Foundation
 import UIKit
 
 enum ScriptRenderService {
-    private static let fillerWords: Set<String> = [
-        "um", "uh", "like", "you", "know", "actually", "basically", "literally"
+    nonisolated private static let fillerWords: Set<String> = [
+        "um", "uh", "erm", "hmm"
     ]
 
     static func renderLines(text: String, fontSize: Double, width: CGFloat) -> [RenderedScriptLine] {
@@ -18,7 +18,7 @@ enum ScriptRenderService {
         }
     }
 
-    static func normalizeTokens(_ text: String, droppingFillers: Bool = true) -> [String] {
+    nonisolated static func normalizeTokens(_ text: String, droppingFillers: Bool = true) -> [String] {
         let lowered = text.lowercased()
         let cleaned = lowered.unicodeScalars.map { scalar -> Character in
             if CharacterSet.alphanumerics.contains(scalar) || scalar == "'" {

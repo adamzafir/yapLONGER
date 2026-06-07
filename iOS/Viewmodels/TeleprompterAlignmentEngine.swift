@@ -1,14 +1,15 @@
 import Foundation
 
 final class TeleprompterAlignmentEngine {
-    private let debounceWindow: TimeInterval = 0.32
-    private let driftResetThreshold = 0.08
+    private let debounceWindow: TimeInterval = 0.16
+    private let driftResetThreshold = 0.12
 
     private(set) var state: LineAlignmentState = .initial
 
     private var lines: [RenderedScriptLine] = []
     private var candidateAdvanceTimestamp: TimeInterval?
     private var candidateTargetLine: Int?
+    private var candidateObservationCount = 0
     private var lastTranscriptTokens: [String] = []
 
     func configure(lines: [RenderedScriptLine]) {
@@ -16,6 +17,7 @@ final class TeleprompterAlignmentEngine {
         self.state = .initial
         self.candidateAdvanceTimestamp = nil
         self.candidateTargetLine = nil
+        self.candidateObservationCount = 0
         self.lastTranscriptTokens = []
     }
 
@@ -30,12 +32,25 @@ final class TeleprompterAlignmentEngine {
 
         let currentIndex = min(max(state.activeLineIndex, 0), lines.count - 1)
         let currentEvidence = evidence(for: tokens, in: lines[currentIndex].normalizedTokens)
-        let nextEvidence = currentIndex + 1 < lines.count
-            ? evidence(for: tokens, in: lines[currentIndex + 1].normalizedTokens)
-            : .empty
+        let lookAhead: [(Int, LineEvidence)]
+        if currentIndex + 1 < lines.count {
+            lookAhead = ((currentIndex + 1)...min(currentIndex + 3, lines.count - 1))
+                .map { index in
+                    (index, evidence(for: tokens, in: lines[index].normalizedTokens))
+                }
+        } else {
+            lookAhead = []
+        }
+        let nextEvidence = lookAhead.first?.1 ?? .empty
+        let bestLookAheadScore = lookAhead.map(\.1.score).max() ?? 0
 
         let currentScore = currentEvidence.score
         let nextScore = nextEvidence.score
+        let drift = driftState(
+            for: currentScore,
+            nextScore: nextScore,
+            bestLookAheadScore: bestLookAheadScore
+        )
 
         state.currentScore = currentScore
         state.nextScore = nextScore
@@ -45,7 +60,7 @@ final class TeleprompterAlignmentEngine {
                 activeLineIndex: currentIndex,
                 currentScore: currentScore,
                 nextScore: nextScore,
-                driftState: driftState(for: currentScore, nextScore: nextScore)
+                driftState: drift
             )
         )
 
@@ -83,49 +98,58 @@ final class TeleprompterAlignmentEngine {
             )
         }
 
-        let drift = driftState(for: currentScore, nextScore: nextScore)
         state.driftState = drift
         if drift == .drifting {
-            candidateAdvanceTimestamp = nil
-            candidateTargetLine = nil
+            clearCandidate()
             return
         }
 
         let targetLine = decideTargetLine(
             currentIndex: currentIndex,
             currentEvidence: currentEvidence,
-            nextEvidence: nextEvidence
+            lookAhead: lookAhead
         )
         guard let targetLine else {
-            candidateAdvanceTimestamp = nil
-            candidateTargetLine = nil
+            clearCandidate()
             return
         }
 
         if candidateTargetLine != targetLine {
             candidateTargetLine = targetLine
             candidateAdvanceTimestamp = timestamp
+            candidateObservationCount = 1
             return
         }
+        candidateObservationCount += 1
 
-        guard let started = candidateAdvanceTimestamp, timestamp - started >= debounceWindow else {
+        let requiredObservations = targetLine > currentIndex + 1 ? 3 : 2
+        guard
+            candidateObservationCount >= requiredObservations,
+            let started = candidateAdvanceTimestamp,
+            timestamp - started >= debounceWindow
+        else {
             return
         }
 
         advance(
             to: targetLine,
             timestamp: timestamp,
-            score: targetLine == currentIndex + 1 ? currentScore : nextScore
+            score: targetLine == currentIndex + 1
+                ? max(currentScore, nextScore)
+                : (lookAhead.first(where: { $0.0 == targetLine })?.1.score ?? nextScore)
         )
-        candidateAdvanceTimestamp = nil
-        candidateTargetLine = nil
+        clearCandidate()
     }
 
-    private func driftState(for currentScore: Double, nextScore: Double) -> AlignmentDriftState {
-        if currentScore < driftResetThreshold && nextScore < driftResetThreshold {
+    private func driftState(
+        for currentScore: Double,
+        nextScore: Double,
+        bestLookAheadScore: Double
+    ) -> AlignmentDriftState {
+        if max(currentScore, max(nextScore, bestLookAheadScore)) < driftResetThreshold {
             return .drifting
         }
-        if nextScore > currentScore && nextScore >= 0.5 {
+        if bestLookAheadScore > currentScore && bestLookAheadScore >= 0.32 {
             return .recovering
         }
         return .aligned
@@ -134,13 +158,18 @@ final class TeleprompterAlignmentEngine {
     private func decideTargetLine(
         currentIndex: Int,
         currentEvidence: LineEvidence,
-        nextEvidence: LineEvidence
+        lookAhead: [(Int, LineEvidence)]
     ) -> Int? {
         if currentEvidence.canAdvanceCurrentLine {
             return min(currentIndex + 1, lines.count - 1)
         }
-        if nextEvidence.canAutoAdvanceToNextLine {
-            return min(currentIndex + 1, lines.count - 1)
+        if let recovery = lookAhead
+            .filter({
+                $0.1.canAutoAdvanceToNextLine &&
+                ($0.0 == currentIndex + 1 || $0.1.meaningfulMatchCount >= 2)
+            })
+            .max(by: { $0.1.score < $1.1.score }) {
+            return recovery.0
         }
         return nil
     }
@@ -167,26 +196,48 @@ final class TeleprompterAlignmentEngine {
     private func evidence(for transcriptTokens: [String], in lineTokens: [String]) -> LineEvidence {
         guard !transcriptTokens.isEmpty, !lineTokens.isEmpty else { return .empty }
 
-        let transcriptWindow = Array(transcriptTokens.suffix(max(8, lineTokens.count + 3)))
-        let transcriptSet = Set(transcriptWindow)
+        let transcriptWindow = Array(transcriptTokens.suffix(max(10, lineTokens.count + 5)))
         let meaningfulLineTokens = lineTokens.filter { isMeaningful($0) }
-        let meaningfulMatches = meaningfulLineTokens.filter { transcriptSet.contains($0) }
-        let tailTokens = Array(meaningfulLineTokens.suffix(min(2, meaningfulLineTokens.count)))
-        let endingMatchCount = tailTokens.filter { transcriptSet.contains($0) }.count
+        let orderedMatchCount = longestOrderedMatch(
+            lineTokens: meaningfulLineTokens,
+            transcriptTokens: transcriptWindow
+        )
+        let meaningfulMatches = meaningfulLineTokens.filter { lineToken in
+            transcriptWindow.contains { tokensMatch(lineToken, $0) }
+        }
+        let tailTokens = Array(meaningfulLineTokens.suffix(min(3, meaningfulLineTokens.count)))
+        let endingMatchCount = tailTokens.filter { lineToken in
+            transcriptWindow.contains { tokensMatch(lineToken, $0) }
+        }.count
         let lastMeaningfulWord = tailTokens.last
-        let lastWordMatched = lastMeaningfulWord.map(transcriptSet.contains) ?? false
+        let lastWordMatched = lastMeaningfulWord.map { lastWord in
+            transcriptWindow.suffix(4).contains { tokensMatch(lastWord, $0) }
+        } ?? false
         let hasAnchorWord = !meaningfulMatches.isEmpty
         let hasEndingEvidence = endingMatchCount > 0
 
         let lineLength = max(meaningfulLineTokens.count, 1)
-        let anchorRatio = Double(meaningfulMatches.count) / Double(lineLength)
+        let orderedRatio = Double(orderedMatchCount) / Double(lineLength)
+        let anchorRatio = Double(Set(meaningfulMatches).count) / Double(lineLength)
         let endingRatio = Double(endingMatchCount) / Double(max(tailTokens.count, 1))
-        let score = min(1, anchorRatio * 0.55 + endingRatio * 0.45)
+        let score = min(1, orderedRatio * 0.65 + anchorRatio * 0.2 + endingRatio * 0.15)
 
-        let canAdvanceCurrentLine = hasAnchorWord && (lastWordMatched || endingMatchCount >= 1)
+        let minimumOrderedRatio: Double
+        switch meaningfulLineTokens.count {
+        case 0...3:
+            minimumOrderedRatio = 0.66
+        case 4...7:
+            minimumOrderedRatio = 0.5
+        default:
+            minimumOrderedRatio = 0.38
+        }
+
+        let canAdvanceCurrentLine =
+            (orderedRatio >= minimumOrderedRatio && orderedMatchCount >= min(2, lineLength)) ||
+            (orderedRatio >= max(0.3, minimumOrderedRatio - 0.1) && endingRatio >= 0.5)
         let canAutoAdvanceToNextLine =
-            meaningfulMatches.count >= 2 ||
-            (meaningfulMatches.count == 1 && lastWordMatched)
+            (orderedRatio >= minimumOrderedRatio && orderedMatchCount >= min(2, lineLength)) ||
+            (orderedRatio >= max(0.34, minimumOrderedRatio - 0.08) && lastWordMatched)
 
         return LineEvidence(
             score: score,
@@ -200,7 +251,63 @@ final class TeleprompterAlignmentEngine {
     }
 
     private func isMeaningful(_ token: String) -> Bool {
-        token.count > 2
+        token.count > 2 || token.allSatisfy(\.isNumber)
+    }
+
+    private func tokensMatch(_ lhs: String, _ rhs: String) -> Bool {
+        if lhs == rhs { return true }
+        let shorterCount = min(lhs.count, rhs.count)
+        guard shorterCount >= 4 else { return false }
+        let allowedDistance = shorterCount >= 8 ? 2 : 1
+        if editDistance(lhs, rhs) <= allowedDistance {
+            return true
+        }
+
+        // Speech recognition often changes a word ending while preserving its stem.
+        return shorterCount >= 6 && lhs.prefix(4) == rhs.prefix(4)
+    }
+
+    private func longestOrderedMatch(
+        lineTokens: [String],
+        transcriptTokens: [String]
+    ) -> Int {
+        guard !lineTokens.isEmpty, !transcriptTokens.isEmpty else { return 0 }
+        var previous = [Int](repeating: 0, count: transcriptTokens.count + 1)
+
+        for lineToken in lineTokens {
+            var current = [Int](repeating: 0, count: transcriptTokens.count + 1)
+            for index in transcriptTokens.indices {
+                if tokensMatch(lineToken, transcriptTokens[index]) {
+                    current[index + 1] = previous[index] + 1
+                } else {
+                    current[index + 1] = max(previous[index + 1], current[index])
+                }
+            }
+            previous = current
+        }
+        return previous.last ?? 0
+    }
+
+    private func editDistance(_ lhs: String, _ rhs: String) -> Int {
+        let left = Array(lhs)
+        let right = Array(rhs)
+        var previous = Array(0...right.count)
+
+        for (leftIndex, leftCharacter) in left.enumerated() {
+            var current = [leftIndex + 1]
+            for (rightIndex, rightCharacter) in right.enumerated() {
+                let substitution = previous[rightIndex] + (leftCharacter == rightCharacter ? 0 : 1)
+                current.append(min(previous[rightIndex + 1] + 1, current[rightIndex] + 1, substitution))
+            }
+            previous = current
+        }
+        return previous.last ?? max(left.count, right.count)
+    }
+
+    private func clearCandidate() {
+        candidateAdvanceTimestamp = nil
+        candidateTargetLine = nil
+        candidateObservationCount = 0
     }
 }
 

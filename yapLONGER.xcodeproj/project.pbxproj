@@ -256,14 +256,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = YapLonger;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 6RTZF738Z9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Scripties;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need your microphone to use the teleprompter voice input.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "We need speech recognition to scroll the teleprompter automatically.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Scripties uses your microphone to follow your speech, record practice sessions, and analyze pace, pauses, and pitch.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Scripties uses speech recognition to follow your script and measure your speaking pace.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -274,7 +274,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = sg.tkk.2025.scripties;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -296,14 +296,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = YapLonger;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 6RTZF738Z9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Scripties;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need your microphone to use the teleprompter voice input.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "We need speech recognition to scroll the teleprompter automatically.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Scripties uses your microphone to follow your speech, record practice sessions, and analyze pace, pauses, and pitch.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Scripties uses speech recognition to follow your script and measure your speaking pace.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -314,7 +314,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = sg.tkk.2025.scripties;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

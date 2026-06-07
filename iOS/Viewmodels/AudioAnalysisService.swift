@@ -3,9 +3,10 @@ import Accelerate
 import Foundation
 
 enum AudioAnalysisService {
-    static func analyze(
+    nonisolated static func analyze(
         recordingURL: URL?,
         transcript: String,
+        wordTimings: [RecognizedWordTiming] = [],
         lineAlignment: LineAlignmentState,
         renderedLines: [RenderedScriptLine],
         elapsedTime: TimeInterval,
@@ -13,8 +14,18 @@ enum AudioAnalysisService {
         silenceDurations: [TimeInterval]
     ) -> DeliveryAnalysis {
         let transcriptTokens = ScriptRenderService.normalizeTokens(transcript, droppingFillers: false)
-        let wordsPerMinute = elapsedTime > 0
-            ? Int(round(Double(max(wordCount, transcriptTokens.count)) / (elapsedTime / 60)))
+        let recognizedCount = max(wordCount, transcriptTokens.count)
+        let alignmentCount = estimatedAlignedWordCount(
+            lineAlignment: lineAlignment,
+            renderedLines: renderedLines
+        )
+        let measuredWordCount = max(recognizedCount, alignmentCount)
+        let speakingDuration = effectiveSpeakingDuration(
+            wordTimings: wordTimings,
+            fallback: elapsedTime
+        )
+        let wordsPerMinute = speakingDuration > 0
+            ? min(240, max(0, Int(round(Double(measuredWordCount) / (speakingDuration / 60)))))
             : 0
         let pauseAnalysis = makePauseAnalysis(
             silenceDurations: silenceDurations,
@@ -32,22 +43,18 @@ enum AudioAnalysisService {
         let energy = makeEnergyAnalysis(windows: smoothedWindows)
         let pace = makePaceAnalysis(
             wordsPerMinute: wordsPerMinute,
+            wordTimings: wordTimings,
             transitions: lineAlignment.transitions,
             renderedLines: renderedLines
         )
 
-        let consistency = max(
-            0,
-            min(
-                100,
-                (pitch.pitchVariationScore * 0.2) +
-                ((100 - pitch.monotonyRiskScore) * 0.15) +
-                (energy.energyVariationScore * 0.2) +
-                (pace.paceStabilityScore * 0.2) +
-                (pauseAnalysis.pauseControlScore * 0.1) +
-                (adherence.scriptAdherenceScore * 0.15)
-            )
-        )
+        let consistency = confidenceWeightedScore([
+            (pitch.pitchVariationScore, pitch.confidence.value, 0.25),
+            (energy.energyVariationScore, energy.confidence.value, 0.15),
+            (pace.paceStabilityScore, pace.confidence.value, 0.35),
+            (pauseAnalysis.pauseControlScore, pauseAnalysis.confidence.value, 0.15),
+            (adherence.scriptAdherenceScore, adherence.confidence.value, 0.10)
+        ])
 
         let summary = makeSummary(
             pitch: pitch,
@@ -75,28 +82,48 @@ enum AudioAnalysisService {
         )
     }
 
-    private static func loadSignal(from url: URL?) -> (samples: [Float], sampleRate: Double)? {
+    nonisolated private static func loadSignal(from url: URL?) -> (samples: [Float], sampleRate: Double)? {
         guard let url else { return nil }
         guard let file = try? AVAudioFile(forReading: url) else { return nil }
-        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: file.fileFormat.sampleRate, channels: 1, interleaved: false) else {
-            return nil
-        }
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)) else {
-            return nil
-        }
-        do {
-            try file.read(into: buffer)
-        } catch {
+        let sourceFormat = file.processingFormat
+        let sourceRate = sourceFormat.sampleRate
+        guard sourceRate > 0 else { return nil }
+
+        let targetRate = min(16_000, sourceRate)
+        let samplingStep = max(1, Int((sourceRate / targetRate).rounded()))
+        let effectiveRate = sourceRate / Double(samplingStep)
+        let maximumSamples = Int(effectiveRate * 8 * 60)
+        let chunkSize: AVAudioFrameCount = 8_192
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: chunkSize) else {
             return nil
         }
 
-        guard let channelData = buffer.floatChannelData?.pointee else { return nil }
-        let count = Int(buffer.frameLength)
-        let samples = Array(UnsafeBufferPointer(start: channelData, count: count))
-        return (samples, format.sampleRate)
+        var samples: [Float] = []
+        samples.reserveCapacity(min(maximumSamples, Int(file.length) / samplingStep))
+        var sourceIndex = 0
+
+        while samples.count < maximumSamples {
+            buffer.frameLength = 0
+            do {
+                try file.read(into: buffer, frameCount: chunkSize)
+            } catch {
+                return samples.isEmpty ? nil : (samples, effectiveRate)
+            }
+            let count = Int(buffer.frameLength)
+            guard count > 0, let channel = buffer.floatChannelData?.pointee else { break }
+
+            let chunkStartIndex = sourceIndex
+            for index in 0..<count where (chunkStartIndex + index) % samplingStep == 0 {
+                samples.append(channel[index])
+                if samples.count >= maximumSamples { break }
+            }
+            sourceIndex += count
+        }
+
+        return samples.isEmpty ? nil : (samples, effectiveRate)
     }
 
-    private static func makeProsodyWindows(signal: (samples: [Float], sampleRate: Double)?) -> [ProsodyWindow] {
+    nonisolated private static func makeProsodyWindows(signal: (samples: [Float], sampleRate: Double)?) -> [ProsodyWindow] {
         guard let signal, !signal.samples.isEmpty else { return [] }
         let sampleRate = signal.sampleRate
         let frameSize = max(1024, Int(sampleRate * 0.04))
@@ -104,31 +131,51 @@ enum AudioAnalysisService {
         let minLag = Int(sampleRate / 320)
         let maxLag = max(minLag + 1, Int(sampleRate / 75))
 
+        var frameEnergies: [Double] = []
+        var frameStart = 0
+        while frameStart + frameSize < signal.samples.count {
+            let frame = Array(signal.samples[frameStart..<(frameStart + frameSize)])
+            frameEnergies.append(Double(rootMeanSquare(frame)))
+            frameStart += hopSize
+        }
+
+        let sortedEnergies = frameEnergies.sorted()
+        let estimatedNoiseRMS = percentile(sortedEnergies, 0.2)
+        let voicedEnergyThreshold = max(0.006, estimatedNoiseRMS * 2.4)
+
         var windows: [ProsodyWindow] = []
-        var start = 0
-        while start + frameSize < signal.samples.count {
-            let frame = Array(signal.samples[start..<(start + frameSize)])
+        frameStart = 0
+        while frameStart + frameSize < signal.samples.count {
+            let frame = Array(signal.samples[frameStart..<(frameStart + frameSize)])
             let rms = rootMeanSquare(frame)
             let zeroCrossingRate = zeroCrossings(frame)
             let pitchEstimate = estimatePitch(frame, sampleRate: sampleRate, minLag: minLag, maxLag: maxLag)
-            let voiced = rms > 0.008 && zeroCrossingRate < 0.22 && pitchEstimate.pitch != nil
+            let signalToNoiseRatio = Double(rms) / max(estimatedNoiseRMS, 0.000_001)
+            let voiced =
+                Double(rms) > voicedEnergyThreshold &&
+                signalToNoiseRatio >= 2.2 &&
+                zeroCrossingRate < 0.2 &&
+                pitchEstimate.confidence >= 0.5 &&
+                pitchEstimate.pitch != nil
             let voicedRatio = voiced ? 1.0 : 0.0
             windows.append(
                 ProsodyWindow(
-                    startTime: Double(start) / sampleRate,
-                    endTime: Double(start + frameSize) / sampleRate,
+                    startTime: Double(frameStart) / sampleRate,
+                    endTime: Double(frameStart + frameSize) / sampleRate,
                     voicedRatio: voicedRatio,
                     rmsEnergy: Double(rms),
                     pitchHz: voiced ? pitchEstimate.pitch : nil,
-                    pitchConfidence: voiced ? pitchEstimate.confidence : 0
+                    pitchConfidence: voiced
+                        ? pitchEstimate.confidence * min(1, signalToNoiseRatio / 4)
+                        : 0
                 )
             )
-            start += hopSize
+            frameStart += hopSize
         }
         return windows
     }
 
-    private static func smooth(windows: [ProsodyWindow]) -> [ProsodyWindow] {
+    nonisolated private static func smooth(windows: [ProsodyWindow]) -> [ProsodyWindow] {
         guard windows.count > 2 else { return windows }
         return windows.enumerated().map { index, window in
             let neighbors = windows[max(0, index - 1)...min(windows.count - 1, index + 1)]
@@ -148,7 +195,7 @@ enum AudioAnalysisService {
         }
     }
 
-    private static func makePauseAnalysis(
+    nonisolated private static func makePauseAnalysis(
         silenceDurations: [TimeInterval],
         elapsedTime: TimeInterval
     ) -> PauseAnalysis {
@@ -171,10 +218,13 @@ enum AudioAnalysisService {
         )
     }
 
-    private static func makePitchAnalysis(windows: [ProsodyWindow]) -> PitchAnalysis {
-        let pitched = windows.compactMap(\.pitchHz)
+    nonisolated private static func makePitchAnalysis(windows: [ProsodyWindow]) -> PitchAnalysis {
+        let confidentWindows = removePitchOutliers(
+            from: windows.filter { $0.pitchConfidence >= 0.5 }
+        )
+        let rawPitches = confidentWindows.compactMap(\.pitchHz)
         let voicedRatio = windows.isEmpty ? 0 : windows.map(\.voicedRatio).reduce(0, +) / Double(windows.count)
-        guard pitched.count >= 8 else {
+        guard rawPitches.count >= 12 else {
             return PitchAnalysis(
                 voicedRatio: voicedRatio,
                 medianHz: nil,
@@ -188,6 +238,10 @@ enum AudioAnalysisService {
             )
         }
 
+        let rawSorted = rawPitches.sorted()
+        let lowFence = percentile(rawSorted, 0.05)
+        let highFence = percentile(rawSorted, 0.95)
+        let pitched = rawPitches.filter { $0 >= lowFence && $0 <= highFence }
         let sorted = pitched.sorted()
         let median = percentile(sorted, 0.5)
         let q1 = percentile(sorted, 0.25)
@@ -195,14 +249,19 @@ enum AudioAnalysisService {
         let iqr = q3 - q1
         let span = (sorted.last ?? 0) - (sorted.first ?? 0)
         let semitones = sorted.map { 12 * log2(max($0, 1) / max(median, 1)) }
-        let semitoneSpread = (percentile(semitones.sorted(), 0.75) - percentile(semitones.sorted(), 0.25))
-        let movementRate = adjacentMeanDifference(pitched)
-        let monotoneSegments = detectMonotoneSegments(windows: windows, medianPitch: median)
-        let flatPenalty = max(0, 3.5 - semitoneSpread) * 18
-        let erraticPenalty = max(0, movementRate - 18) * 1.3
-        let variationScore = max(0, min(100, 100 - flatPenalty - erraticPenalty))
-        let monotonyRisk = min(100, Double(monotoneSegments.count) * 18 + max(0, 45 - variationScore) * 0.9)
-        let confidence = AnalysisConfidence(min(1, voicedRatio * 0.9))
+        let semitoneSpread = percentile(semitones.sorted(), 0.75) - percentile(semitones.sorted(), 0.25)
+        let chronologicalSemitones = rawPitches.map { 12 * log2(max($0, 1) / max(median, 1)) }
+        let movementRate = adjacentMeanDifference(chronologicalSemitones)
+        let monotoneSegments = detectMonotoneSegments(windows: confidentWindows, medianPitch: median)
+        let spreadScore = triangularScore(value: semitoneSpread, ideal: 4.5, lower: 1.0, upper: 9.0)
+        let movementScore = triangularScore(value: movementRate, ideal: 1.2, lower: 0.15, upper: 4.5)
+        let monotonePenalty = min(35, Double(monotoneSegments.count) * 7)
+        let variationScore = max(0, min(100, spreadScore * 0.7 + movementScore * 0.3 - monotonePenalty))
+        let monotonyRisk = max(0, min(100, 100 - variationScore + monotonePenalty * 0.5))
+        let meanConfidence = confidentWindows.isEmpty
+            ? 0
+            : confidentWindows.map(\.pitchConfidence).reduce(0, +) / Double(confidentWindows.count)
+        let confidence = AnalysisConfidence(min(1, voicedRatio * 0.55 + meanConfidence * 0.45))
         return PitchAnalysis(
             voicedRatio: voicedRatio,
             medianHz: median,
@@ -216,7 +275,7 @@ enum AudioAnalysisService {
         )
     }
 
-    private static func makeEnergyAnalysis(windows: [ProsodyWindow]) -> EnergyAnalysis {
+    nonisolated private static func makeEnergyAnalysis(windows: [ProsodyWindow]) -> EnergyAnalysis {
         guard !windows.isEmpty else {
             return EnergyAnalysis(
                 averageRMS: 0,
@@ -245,13 +304,15 @@ enum AudioAnalysisService {
         )
     }
 
-    private static func makePaceAnalysis(
+    nonisolated private static func makePaceAnalysis(
         wordsPerMinute: Int,
+        wordTimings: [RecognizedWordTiming],
         transitions: [LineTransitionRecord],
         renderedLines: [RenderedScriptLine]
     ) -> PaceAnalysis {
+        let timingRates = sectionRates(from: wordTimings)
         let ordered = transitions.sorted { $0.timestamp < $1.timestamp }
-        let segmentRates: [Int] = zip(ordered, ordered.dropFirst()).compactMap { current, next in
+        let transitionRates: [Int] = zip(ordered, ordered.dropFirst()).compactMap { current, next in
             let duration = max(next.timestamp - current.timestamp, 0.1)
             let lineWordCount = renderedLines
                 .filter { $0.index >= current.toLineIndex && $0.index < next.toLineIndex }
@@ -260,10 +321,24 @@ enum AudioAnalysisService {
             guard lineWordCount > 0 else { return nil }
             return Int(round(Double(lineWordCount) / (duration / 60)))
         }
-        let sections = segmentRates.isEmpty ? [wordsPerMinute] : segmentRates
-        let stabilityPenalty = sqrt(variance(sections.map(Double.init))) * 0.45
-        let paceStability = max(0, min(100, 100 - stabilityPenalty))
-        let confidence = AnalysisConfidence(segmentRates.count >= 2 ? 0.9 : 0.6)
+        let sections = !timingRates.isEmpty
+            ? timingRates
+            : (transitionRates.isEmpty ? [wordsPerMinute] : transitionRates)
+        let paceStability: Double
+        if sections.count >= 2 {
+            let values = sections.map(Double.init)
+            let median = percentile(values.sorted(), 0.5)
+            let deviations = values.map { abs($0 - median) }
+            let medianDeviation = percentile(deviations.sorted(), 0.5)
+            let relativeDeviation = median > 0 ? medianDeviation / median : 1
+            let range = (values.max() ?? median) - (values.min() ?? median)
+            paceStability = max(0, min(100, 100 - relativeDeviation * 150 - max(0, range - 35) * 0.45))
+        } else {
+            paceStability = wordsPerMinute > 0 ? 65 : 0
+        }
+        let confidence = AnalysisConfidence(
+            wordTimings.count >= 30 ? 0.95 : (sections.count >= 2 ? 0.8 : 0.5)
+        )
         return PaceAnalysis(
             wordsPerMinute: wordsPerMinute,
             perSectionWordsPerMinute: sections,
@@ -272,7 +347,7 @@ enum AudioAnalysisService {
         )
     }
 
-    private static func makeAdherenceAnalysis(
+    nonisolated private static func makeAdherenceAnalysis(
         lineAlignment: LineAlignmentState,
         totalLines: Int
     ) -> AdherenceAnalysis {
@@ -294,7 +369,7 @@ enum AudioAnalysisService {
         )
     }
 
-    private static func makeSummary(
+    nonisolated private static func makeSummary(
         pitch: PitchAnalysis,
         energy: EnergyAnalysis,
         pace: PaceAnalysis,
@@ -341,14 +416,14 @@ enum AudioAnalysisService {
         return output
     }
 
-    private static func rootMeanSquare(_ frame: [Float]) -> Float {
+    nonisolated private static func rootMeanSquare(_ frame: [Float]) -> Float {
         guard !frame.isEmpty else { return 0 }
         var result: Float = 0
         vDSP_measqv(frame, 1, &result, vDSP_Length(frame.count))
         return sqrtf(result)
     }
 
-    private static func zeroCrossings(_ frame: [Float]) -> Double {
+    nonisolated private static func zeroCrossings(_ frame: [Float]) -> Double {
         guard frame.count > 1 else { return 1 }
         let crossings = zip(frame, frame.dropFirst()).filter { pair in
             let (lhs, rhs) = pair
@@ -357,38 +432,53 @@ enum AudioAnalysisService {
         return Double(crossings) / Double(frame.count - 1)
     }
 
-    private static func estimatePitch(
+    nonisolated private static func estimatePitch(
         _ frame: [Float],
         sampleRate: Double,
         minLag: Int,
         maxLag: Int
     ) -> (pitch: Double?, confidence: Double) {
         guard frame.count > maxLag + 2 else { return (nil, 0) }
+        let mean = frame.reduce(0, +) / Float(frame.count)
+        var centered = frame.map { $0 - mean }
+        var window = [Float](repeating: 0, count: frame.count)
+        vDSP_hann_window(&window, vDSP_Length(frame.count), Int32(vDSP_HANN_NORM))
+        vDSP_vmul(centered, 1, window, 1, &centered, 1, vDSP_Length(frame.count))
+
         var bestLag: Int?
-        var bestScore: Float = -.infinity
+        var bestScore: Double = 0
         for lag in minLag...maxLag {
-            let count = frame.count - lag
+            let count = centered.count - lag
             guard count > 0 else { continue }
             var correlation: Float = 0
-            vDSP_dotpr(Array(frame[0..<count]), 1, Array(frame[lag..<(lag + count)]), 1, &correlation, vDSP_Length(count))
-            if correlation > bestScore {
-                bestScore = correlation
+            var leadingEnergy: Float = 0
+            var laggedEnergy: Float = 0
+            centered.withUnsafeBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return }
+                vDSP_dotpr(base, 1, base.advanced(by: lag), 1, &correlation, vDSP_Length(count))
+                vDSP_svesq(base, 1, &leadingEnergy, vDSP_Length(count))
+                vDSP_svesq(base.advanced(by: lag), 1, &laggedEnergy, vDSP_Length(count))
+            }
+            let denominator = sqrt(Double(leadingEnergy) * Double(laggedEnergy))
+            guard denominator > 0 else { continue }
+            let normalized = Double(correlation) / denominator
+            if normalized > bestScore {
+                bestScore = normalized
                 bestLag = lag
             }
         }
 
-        guard let lag = bestLag, bestScore.isFinite, bestScore > 0 else {
+        guard let lag = bestLag, bestScore.isFinite, bestScore >= 0.35 else {
             return (nil, 0)
         }
-        let normalized = min(1, Double(bestScore) / Double(frame.count))
         let pitch = sampleRate / Double(lag)
         guard pitch.isFinite, pitch >= 75, pitch <= 320 else {
-            return (nil, normalized * 0.2)
+            return (nil, bestScore * 0.2)
         }
-        return (pitch, normalized)
+        return (pitch, min(1, bestScore))
     }
 
-    private static func detectMonotoneSegments(
+    nonisolated private static func detectMonotoneSegments(
         windows: [ProsodyWindow],
         medianPitch: Double
     ) -> [ClosedRange<Double>] {
@@ -427,7 +517,21 @@ enum AudioAnalysisService {
         return segments
     }
 
-    private static func percentile(_ sorted: [Double], _ percentile: Double) -> Double {
+    nonisolated private static func removePitchOutliers(from windows: [ProsodyWindow]) -> [ProsodyWindow] {
+        guard windows.count >= 5 else { return windows }
+        return windows.enumerated().filter { index, window in
+            guard let pitch = window.pitchHz else { return false }
+            let lower = max(0, index - 2)
+            let upper = min(windows.count - 1, index + 2)
+            let neighborhood = windows[lower...upper].compactMap(\.pitchHz).sorted()
+            guard neighborhood.count >= 3 else { return true }
+            let localMedian = percentile(neighborhood, 0.5)
+            let semitoneDistance = abs(12 * log2(pitch / max(localMedian, 1)))
+            return semitoneDistance <= 7
+        }.map(\.element)
+    }
+
+    nonisolated private static func percentile(_ sorted: [Double], _ percentile: Double) -> Double {
         guard !sorted.isEmpty else { return 0 }
         let position = max(0, min(Double(sorted.count - 1), percentile * Double(sorted.count - 1)))
         let lower = Int(position.rounded(.down))
@@ -437,19 +541,108 @@ enum AudioAnalysisService {
         return sorted[lower] * (1 - weight) + sorted[upper] * weight
     }
 
-    private static func adjacentMeanDifference(_ values: [Double]) -> Double {
+    nonisolated private static func adjacentMeanDifference(_ values: [Double]) -> Double {
         guard values.count > 1 else { return 0 }
         let differences = zip(values, values.dropFirst()).map { abs($1 - $0) }
         return differences.reduce(0, +) / Double(differences.count)
     }
 
-    private static func varianceOfTimeIntervals(_ values: [TimeInterval]) -> Double {
+    nonisolated private static func varianceOfTimeIntervals(_ values: [TimeInterval]) -> Double {
         return variance(values.map { Double($0) })
     }
 
-    private static func variance(_ values: [Double]) -> Double {
+    nonisolated private static func variance(_ values: [Double]) -> Double {
         guard !values.isEmpty else { return 0 }
         let mean = values.reduce(0, +) / Double(values.count)
         return values.reduce(0) { $0 + pow($1 - mean, 2) } / Double(values.count)
+    }
+
+    nonisolated private static func effectiveSpeakingDuration(
+        wordTimings: [RecognizedWordTiming],
+        fallback: TimeInterval
+    ) -> TimeInterval {
+        guard let first = wordTimings.first, let last = wordTimings.last else {
+            return fallback
+        }
+        return max(1, last.endTime - first.startTime)
+    }
+
+    nonisolated private static func estimatedAlignedWordCount(
+        lineAlignment: LineAlignmentState,
+        renderedLines: [RenderedScriptLine]
+    ) -> Int {
+        let completedWords = renderedLines
+            .filter {
+                lineAlignment.completedLines.contains($0.index) &&
+                !lineAlignment.skippedLines.contains($0.index)
+            }
+            .reduce(0) { $0 + $1.normalizedTokens.count }
+
+        guard renderedLines.indices.contains(lineAlignment.activeLineIndex) else {
+            return completedWords
+        }
+
+        let activeLine = renderedLines[lineAlignment.activeLineIndex]
+        guard !lineAlignment.completedLines.contains(activeLine.index) else {
+            return completedWords
+        }
+
+        let conservativeProgress = max(0, min(0.85, lineAlignment.currentScore))
+        let activeWords = Int((Double(activeLine.normalizedTokens.count) * conservativeProgress).rounded(.down))
+        return completedWords + activeWords
+    }
+
+    nonisolated private static func sectionRates(from timings: [RecognizedWordTiming]) -> [Int] {
+        guard timings.count >= 12 else { return [] }
+        let sectionWordCount = 12
+        var rates: [Int] = []
+        var start = 0
+
+        while start + sectionWordCount <= timings.count {
+            let end = min(start + sectionWordCount, timings.count)
+            let section = timings[start..<end]
+            guard let first = section.first, let last = section.last else { break }
+            let duration: TimeInterval
+            if end < timings.count {
+                duration = max(2, timings[end].startTime - first.startTime)
+            } else {
+                let intervals = zip(section, section.dropFirst()).map {
+                    $1.startTime - $0.startTime
+                }
+                let typicalInterval = intervals.isEmpty
+                    ? max(last.duration, 0.2)
+                    : percentile(intervals.sorted(), 0.5)
+                duration = max(2, last.endTime + typicalInterval - first.startTime)
+            }
+            let rate = Int(round(Double(section.count) / (duration / 60)))
+            if (45...260).contains(rate) {
+                rates.append(rate)
+            }
+            start += sectionWordCount
+        }
+        return rates
+    }
+
+    nonisolated private static func triangularScore(
+        value: Double,
+        ideal: Double,
+        lower: Double,
+        upper: Double
+    ) -> Double {
+        if value <= ideal {
+            return max(0, min(100, (value - lower) / max(ideal - lower, 0.001) * 100))
+        }
+        return max(0, min(100, (upper - value) / max(upper - ideal, 0.001) * 100))
+    }
+
+    nonisolated private static func confidenceWeightedScore(
+        _ metrics: [(score: Double, confidence: Double, weight: Double)]
+    ) -> Double {
+        let usable = metrics.filter { $0.confidence >= 0.3 }
+        let totalWeight = usable.reduce(0) { $0 + $1.confidence * $1.weight }
+        guard totalWeight > 0 else { return 0 }
+        return usable.reduce(0) {
+            $0 + $1.score * $1.confidence * $1.weight
+        } / totalWeight
     }
 }

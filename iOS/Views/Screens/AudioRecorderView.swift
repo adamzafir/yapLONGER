@@ -106,7 +106,7 @@ struct AudioRecorderView: View {
     private func configureAudioSessionAndRequestPermission() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setCategory(.playAndRecord, options: [.defaultToSpeaker, .allowBluetoothHFP])
             try session.setActive(true)
             self.session = session
             

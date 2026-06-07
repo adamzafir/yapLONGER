@@ -104,6 +104,16 @@ struct TranscriptToken: Identifiable, Codable, Hashable {
     }
 }
 
+struct RecognizedWordTiming: Codable, Hashable {
+    let word: String
+    let startTime: TimeInterval
+    let duration: TimeInterval
+
+    nonisolated var endTime: TimeInterval {
+        startTime + duration
+    }
+}
+
 enum AlignmentDriftState: String, Codable, Hashable {
     case aligned
     case recovering
@@ -165,7 +175,7 @@ struct LineAlignmentState: Codable, Hashable {
 struct AnalysisConfidence: Codable, Hashable {
     let value: Double
 
-    init(_ value: Double) {
+    nonisolated init(_ value: Double) {
         self.value = max(0, min(1, value))
     }
 }

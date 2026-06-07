@@ -54,16 +54,8 @@ struct OnboardingView: View {
     
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color.pri.opacity(0.25),
-                    Color.sec.opacity(0.15)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            Color.pri.opacity(0.06)
             .ignoresSafeArea()
-            .animation(.easeInOut(duration: 0.5), value: safeCurrentPage)
             
             VStack(spacing: 20) {
                 HStack {
@@ -169,11 +161,7 @@ struct OnboardingView: View {
                         .foregroundColor(.white)
                         .frame(width: 170, height: 50)
                         .background(
-                            LinearGradient(
-                                colors: [Color.pri, Color.sec],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                            Color.pri
                         )
                         .cornerRadius(12)
                         .shadow(color: Color.pri.opacity(0.35), radius: 8, x: 0, y: 4)
@@ -215,18 +203,12 @@ struct OnboardingPageView: View {
                 .scaledToFit()
                 .frame(width: 100, height: 100)
         } else {
-            // SF Symbol with pri→sec gradient
+            // SF Symbol
             Image(systemName: effectiveName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 100, height: 100)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.pri, Color.sec],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .foregroundStyle(Color.pri)
         }
         #elseif os(macOS)
         if let nsImage = NSImage(named: effectiveName) {
@@ -236,18 +218,12 @@ struct OnboardingPageView: View {
                 .scaledToFit()
                 .frame(width: 100, height: 100)
         } else {
-            // SF Symbol with pri→sec gradient
+            // SF Symbol
             Image(systemName: effectiveName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 100, height: 100)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.pri, Color.sec],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .foregroundStyle(Color.pri)
         }
         #endif
     }
@@ -257,20 +233,8 @@ struct OnboardingPageView: View {
             // Icon with animation
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.pri.opacity(0.18), Color.sec.opacity(0.12)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 180, height: 180)
-                    .scaleEffect(isAnimating ? 1.08 : 1.0)
-                    .animation(
-                        Animation.easeInOut(duration: 2.0)
-                            .repeatForever(autoreverses: true),
-                        value: isAnimating
-                    )
+                    .fill(Color.pri.opacity(0.12))
+                    .frame(width: 172, height: 172)
                 
                 pageImage(named: page.imageName)
                     .padding()
@@ -282,13 +246,7 @@ struct OnboardingPageView: View {
                     .font(.system(size: 28, weight: .bold))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color.pri, Color.sec],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .foregroundStyle(.primary)
                 
                 Text(page.description)
                     .font(.system(size: 17))

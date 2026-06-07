@@ -23,6 +23,8 @@ struct ReviewView: View {
     // MARK: - Expansions
     @State private var expandWPM = false
     @State private var expandCIS = false
+    @State private var expandPauses = false
+    @State private var expandPitch = false
 
     init(review: Binding<Review>, scriptItemID: UUID? = nil, showsSaveButton: Bool = true, autoPersistOnAppear: Bool = false, onSave: ((Review) -> Void)? = nil, onDismiss: (() -> Void)? = nil) {
         _review = review
@@ -49,8 +51,26 @@ struct ReviewView: View {
         return f.string(from: review.date)
     }
 
+    private var pitchGrade: String {
+        guard let score = review.pitchVariation else { return "Not enough audio" }
+        switch score {
+        case 80...: return "Expressive"
+        case 60..<80: return "Balanced"
+        case 40..<60: return "Developing"
+        default: return "Too flat"
+        }
+    }
+
+    private var sessionDetail: String? {
+        guard let wordCount = review.recognizedWordCount, let duration = review.duration else {
+            return nil
+        }
+        let totalSeconds = Int(duration.rounded())
+        return "\(wordCount) words recognized in \(totalSeconds / 60):\(String(format: "%02d", totalSeconds % 60))"
+    }
+
     private func togglePlayback() {
-        guard let url = review.audioURL else { return }
+        guard let url = review.resolvedAudioURL else { return }
 
         if let player = audioPlayer, player.url == url {
             if player.isPlaying {
@@ -99,14 +119,19 @@ struct ReviewView: View {
             Section {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Playback")
-                            .font(.headline)
+                        Text("Practice complete")
+                            .font(.title3.weight(.semibold))
                         Text(formattedDate)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                        if let sessionDetail {
+                            Text(sessionDetail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     Spacer()
-                    if let url = review.audioURL {
+                    if let url = review.resolvedAudioURL {
                         Button {
                             togglePlayback()
                         } label: {
@@ -120,30 +145,20 @@ struct ReviewView: View {
                 }
             }
 
-            Section("Result") {
+            Section("Delivery") {
                 DisclosureGroup(isExpanded: $expandWPM) {
                     SemiCircleGauge(
-                        progress: max(0, min(1, Double(review.wpm)/180)),
-                        highlight: (100.0/180)...(120.0/180),
+                        progress: max(0, min(1, Double(review.wpm)/220)),
+                        highlight: (100.0/220)...(140.0/220),
                         minLabel: "0",
-                        maxLabel: "180",
+                        maxLabel: "220",
                         valueLabel: "\(review.wpm)"
                     )
                     .frame(height: 110)
 
-                    if review.wpm > 120 {
-                        Text("Too fast. The best WPM is 120. The green band shows the ideal range.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else if review.wpm < 100 {
-                        Text("Too slow. The best WPM is 120. The green band shows the ideal range.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Good! The best WPM is 120. The green band shows the ideal range.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(wpmFeedback)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 } label: {
                     HStack {
                         Text("Words Per Minute")
@@ -163,24 +178,69 @@ struct ReviewView: View {
                         )
                         .frame(height: 110)
                     }
-                    if review.cis < 80 {
-                        Text("Take less pauses. The best consistency (CIS) is 80–85%. The green band shows the ideal range.")
-                            .font(.footnote)
+                    Text(paceFeedback)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } label: {
+                    HStack {
+                        Text("Pace Consistency")
+                        Spacer()
+                        Text("\(review.cis)%").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+
+                DisclosureGroup(isExpanded: $expandPauses) {
+                    SemiCircleGauge(
+                        progress: max(0, min(1, Double(review.pauseControl) / 100)),
+                        highlight: 0.75...1,
+                        minLabel: "0%",
+                        maxLabel: "100%",
+                        valueLabel: "\(review.pauseControl)%"
+                    )
+                    .frame(height: 110)
+
+                    Text(review.pauseControl >= 75
+                         ? "Your pauses were controlled and generally well placed."
+                         : "Try replacing hesitant gaps with shorter, intentional pauses.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } label: {
+                    HStack {
+                        Text("Pause Control")
+                        Spacer()
+                        Text("\(review.pauseControl)%")
+                            .monospacedDigit()
                             .foregroundStyle(.secondary)
-                    } else if review.cis > 85 {
-                        Text("Take more pauses. The best consistency (CIS) is 80–85%. The green band shows the ideal range.")
+                    }
+                }
+
+                DisclosureGroup(isExpanded: $expandPitch) {
+                    if let pitch = review.pitchVariation {
+                        SemiCircleGauge(
+                            progress: max(0, min(1, Double(pitch) / 100)),
+                            highlight: 0.65...0.9,
+                            minLabel: "Flat",
+                            maxLabel: "Varied",
+                            valueLabel: "\(pitch)%"
+                        )
+                        .frame(height: 110)
+
+                        Text(pitchFeedback)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("Keep it up! The best consistency (CIS) is 80–85%. The green band shows the ideal range.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        ContentUnavailableView {
+                            Label("Pitch unavailable", systemImage: "waveform.slash")
+                        } description: {
+                            Text("Speak for a little longer and keep the microphone close enough for a clean pitch reading.")
+                        }
                     }
                 } label: {
                     HStack {
-                        Text("Consistency")
+                        Text("Pitch Variation")
                         Spacer()
-                        Text("\(review.cis)%").monospacedDigit().foregroundStyle(.secondary)
+                        Text(pitchGrade)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -194,7 +254,7 @@ struct ReviewView: View {
                             .frame(height: 55)
                             .foregroundColor(.pri)
                             .glassEffect()
-                        Text("Save Review")
+                        Text(hasPersisted ? "Done" : "Save Review")
                             .foregroundColor(.white)
                             .fontWeight(.semibold)
                     }
@@ -209,6 +269,40 @@ struct ReviewView: View {
                 persistReview(shouldDismiss: false)
             }
         }
+    }
+
+    private var wpmFeedback: String {
+        if review.wpm < 100 {
+            return "Your pace was measured from recognized words. Try moving slightly faster while keeping clear articulation."
+        }
+        if review.wpm > 140 {
+            return "Your pace may be difficult to follow. Add breathing room around important ideas."
+        }
+        return "Your overall speaking speed was in a clear presentation range."
+    }
+
+    private var paceFeedback: String {
+        if review.cis >= 80 {
+            return "Your speaking speed stayed steady across the practice."
+        }
+        if review.cis >= 60 {
+            return "Your pace shifted between sections. Rehearse transitions to make the changes feel intentional."
+        }
+        return "Your speed changed significantly during the practice. Aim for a steadier rhythm before adding dramatic pace changes."
+    }
+
+    private var pitchFeedback: String {
+        guard let pitch = review.pitchVariation else { return "" }
+        if pitch >= 80 {
+            return "Strong vocal variety. Your pitch moved enough to create emphasis without becoming erratic."
+        }
+        if pitch >= 60 {
+            return "Your pitch had useful variation. Push key words a little further to make the structure clearer."
+        }
+        if pitch >= 40 {
+            return "Some pitch movement was detected, but longer sections stayed fairly level."
+        }
+        return "Your delivery was mostly flat. Mark a few key phrases to lift, lower, or stress."
     }
 }
 
