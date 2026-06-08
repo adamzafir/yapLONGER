@@ -6,6 +6,7 @@ struct Screen3Teleprompter: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var title: String
     @Binding var script: String
     @Binding var WPM: Int
@@ -157,6 +158,11 @@ struct Screen3Teleprompter: View {
             .frame(minWidth: 44)
         }
         .font(.subheadline.weight(.medium))
+        .contentTransition(.opacity)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: session.isRecording)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: session.isAnalyzing)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue("\(session.liveWordsPerMinute) words per minute")
     }
 
     private var scriptReader: some View {
@@ -188,8 +194,12 @@ struct Screen3Teleprompter: View {
                 .padding(.vertical, 24)
             }
             .onChange(of: session.activeLineIndex) { _, newIndex in
-                withAnimation(.easeInOut(duration: 0.25)) {
+                if reduceMotion {
                     proxy.scrollTo(newIndex, anchor: .center)
+                } else {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(newIndex, anchor: .center)
+                    }
                 }
             }
         }
@@ -199,8 +209,10 @@ struct Screen3Teleprompter: View {
         VStack(spacing: 10) {
             Button {
                 if session.isRecording {
+                    InteractionFeedback.impact(.medium)
                     finishPractice()
                 } else {
+                    InteractionFeedback.impact(.medium)
                     Task {
                         await session.start()
                     }
@@ -226,7 +238,7 @@ struct Screen3Teleprompter: View {
                 .background(session.isRecording ? Color.red : Color.pri)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle())
             .disabled(session.isAnalyzing || renderedLines.isEmpty)
 
             Text(
@@ -302,6 +314,7 @@ struct Screen3Teleprompter: View {
             }
             reviewDraft = review
             WPM = review.wpm
+            InteractionFeedback.success()
             navigateToReview = true
         }
     }

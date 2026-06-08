@@ -18,6 +18,7 @@ struct ReviewView: View {
     // MARK: - Audio playback state
     @State private var audioPlayer: AVAudioPlayer?
     @State private var isPlaying = false
+    @State private var playbackTimer: Timer?
     @State private var hasPersisted = false
 
     // MARK: - Expansions
@@ -76,9 +77,11 @@ struct ReviewView: View {
             if player.isPlaying {
                 player.pause()
                 isPlaying = false
+                stopPlaybackTimer()
             } else {
                 player.play()
                 isPlaying = true
+                startPlaybackTimer()
             }
             return
         }
@@ -88,6 +91,7 @@ struct ReviewView: View {
             audioPlayer = player
             player.play()
             isPlaying = true
+            startPlaybackTimer()
         } catch {
             print("Audio playback error: \(error.localizedDescription)")
             isPlaying = false
@@ -108,6 +112,7 @@ struct ReviewView: View {
         }
         onSave?(review)
         hasPersisted = true
+        InteractionFeedback.success()
         if shouldDismiss {
             dismiss()
             onDismiss?()
@@ -131,7 +136,7 @@ struct ReviewView: View {
                         }
                     }
                     Spacer()
-                    if let url = review.resolvedAudioURL {
+                    if review.resolvedAudioURL != nil {
                         Button {
                             togglePlayback()
                         } label: {
@@ -140,7 +145,7 @@ struct ReviewView: View {
                         }
                         .tint(.pri)
                         .buttonStyle(.bordered)
-                        .accessibilityLabel(url.lastPathComponent)
+                        .accessibilityLabel(isPlaying ? "Pause recording" : "Play recording")
                     }
                 }
             }
@@ -249,17 +254,15 @@ struct ReviewView: View {
                 Button {
                     persistReview()
                 } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 24)
-                            .frame(height: 55)
-                            .foregroundColor(.pri)
-                            .glassEffect()
-                        Text(hasPersisted ? "Done" : "Save Review")
-                            .foregroundColor(.white)
-                            .fontWeight(.semibold)
-                    }
+                    Text(hasPersisted ? "Done" : "Save Review")
+                        .foregroundStyle(.white)
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color.pri)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle())
                 .padding(.vertical, 6)
             }
         }
@@ -269,6 +272,25 @@ struct ReviewView: View {
                 persistReview(shouldDismiss: false)
             }
         }
+        .onDisappear {
+            audioPlayer?.stop()
+            isPlaying = false
+            stopPlaybackTimer()
+        }
+    }
+
+    private func startPlaybackTimer() {
+        stopPlaybackTimer()
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+            guard let player = audioPlayer, !player.isPlaying else { return }
+            isPlaying = false
+            stopPlaybackTimer()
+        }
+    }
+
+    private func stopPlaybackTimer() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
     }
 
     private var wpmFeedback: String {
